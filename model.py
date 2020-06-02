@@ -53,9 +53,9 @@ class ADModel(nn.Module):
         return x
 
 
-class ADModelV2(nn.Module):
+class ExperimentalModel(nn.Module):
     def __init__(self, in_height, in_width, in_depth, out_features):
-        super(ADModelV2, self).__init__()
+        super(ExperimentalModel, self).__init__()
         self.identifier = 'Experimental'
         self.dims = (in_depth, in_height, in_width)
 
@@ -108,9 +108,9 @@ class ADModelV2(nn.Module):
         x = self.end_norm(x)
         x = self.rect(x)
 
-        x = x.view(-1, 32 * self.dims[0] * self.dims[1] * self.dims[2] // (2**5)**3)
+        x = x.view(-1, 64 * self.dims[0] * self.dims[1] * self.dims[2] // (2**5)**3)
         x = self.linear(x)
-        x = self.rect2(x)
+        x = self.rect1(x)
         x = self.classifier(x)
 
         return x

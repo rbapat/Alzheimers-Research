@@ -2,7 +2,7 @@ from torch.utils.data import DataLoader
 from dataset import DataParser
 from util import TrainGrapher
 import torch.optim as optim
-from model import ADModel, ADModelV2
+from model import ADModel, ExperimentalModel
 import torch.nn as nn
 import torch
 import os
@@ -37,8 +37,8 @@ def main():
     accuracy = grapher.add_lines("Accuracy", "Train Accuracy", "Validation Accuracy")
     losses = grapher.add_lines("Loss", "Train Loss", "Validation Loss")
 
-    # initialized model, loss function, and optimizer
-    model = ADModel(*DATA_DIM, NUM_OUTPUTS).cuda()
+    # initialize model, loss function, and optimizer
+    model = ExperimentalModel(*DATA_DIM, NUM_OUTPUTS).cuda()
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr = LEARNING_RATE, weight_decay = WEIGHT_DECAY)
 
@@ -65,7 +65,7 @@ def main():
     # run main training loop. Validation set is tested after every training iteration
     for epoch in range(NUM_EPOCHS):
         for phase in range(2): # phase: 0 = train, 1 = val
-            running_loss, running_correct = 0, 0
+            running_loss, running_correct = 0.0, 0.0
             for (data, label) in loaders[phase]:
                 # convert data to cuda because model is cuda
                 data, label = data.cuda(), label.type(torch.LongTensor).cuda()
@@ -84,6 +84,7 @@ def main():
                     loss.backward()
                     optimizer.step()
 
+                # TODO: Loss calculation might be incorrect, check it
                 running_loss += loss.item()
                 running_correct += (preds == label).sum().item()
 
@@ -92,7 +93,7 @@ def main():
             true_loss = running_loss / len(dataset.get_loader(phase))
 
             if phase == 0:
-                print("Epoch %d/%d, train accuracy: %.2f" % (epoch + 1, NUM_EPOCHS, true_accuracy), end =" ") 
+                print("Epoch %d/%d, train accuracy: %.2f" % (epoch + 1, NUM_EPOCHS, true_accuracy), end ="") 
             if phase == 1:
                 print(", val accuracy: %.2f, val loss: %.4f" % (true_accuracy, true_loss))
 
