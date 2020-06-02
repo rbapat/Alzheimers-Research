@@ -1,0 +1,16 @@
+# Directories with ADNI data
+Processed/
+Original/
+
+# ADNI specific information
+dataset.csv
+data_query.pdf
+
+# Model weights
+checkpoints/
+*.t7
+
+# Misc
+__pycache__/
+
+
