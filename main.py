@@ -2,7 +2,7 @@ from torch.utils.data import DataLoader
 from dataset import DataParser
 from util import TrainGrapher
 import torch.optim as optim
-from model import ADModel
+from model import ADModel, ADModelV2
 import torch.nn as nn
 import torch
 import os
@@ -10,7 +10,7 @@ import os
 # model hyperparameters
 LEARNING_RATE = 0.0001
 NUM_EPOCHS = 1000
-BATCH_SIZE = 25
+BATCH_SIZE = 10
 WEIGHT_DECAY = 0.00001
 
 # weight/graphing parameters
@@ -49,11 +49,14 @@ def main():
         optimizer.load_state_dict(ckpt['optimizer'])
 
     # load weights from this model to only the first few layers
-    if os.path.exists('pretrain.t7') and model.version == 1.3:
-    	state_dict = torch.load('pretrain.t7')['state_dict']
-    	with torch.no_grad():
-    		model.load(state_dict)
-    		#model.pretrain_weights(state_dict)
+    if os.path.exists('pretrain.t7') and model.identifier == 'Baseline':
+        #state_dict = torch.load('pretrain.t7')['state_dict']
+        with torch.no_grad():
+            ckpt = torch.load('pretrain.t7')
+            model.load_state_dict(ckpt['state_dict'])
+            optimizer.load_state_dict(ckpt['optimizer'])
+
+            print("Pretrained Weights Loaded!")
 
     # if checkpoint directory doesnt exist, create one if needed
     if SAVE_MODEL and not os.path.exists('checkpoints'):
@@ -81,7 +84,7 @@ def main():
                     loss.backward()
                     optimizer.step()
 
-                running_loss += loss.item() * BATCH_SIZE
+                running_loss += loss.item()
                 running_correct += (preds == label).sum().item()
 
             # get metrics over entire dataset
@@ -89,9 +92,9 @@ def main():
             true_loss = running_loss / len(dataset.get_loader(phase))
 
             if phase == 0:
-            	print("Epoch %d/%d, train accuracy: %.2f" % (epoch + 1, NUM_EPOCHS, true_accuracy), end =" ") 
+                print("Epoch %d/%d, train accuracy: %.2f" % (epoch + 1, NUM_EPOCHS, true_accuracy), end =" ") 
             if phase == 1:
-            	print(", val accuracy: %.2f, val loss: %.4f" % (true_accuracy, true_loss))
+                print(", val accuracy: %.2f, val loss: %.4f" % (true_accuracy, true_loss))
 
             # add metrics to list to be graphed
             accuracy[phase].append(true_accuracy)
