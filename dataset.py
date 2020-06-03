@@ -60,12 +60,25 @@ class DataParser:
         random.shuffle(dataset)
 
         # TODO: implement this split properly using len(splits) > 2
+        if sum(splits) != 1.0:
+            raise Exception("Dataset splits does not sum to 1")
+
         self.subsets = []
-        self.subsets.append(TorchLoader(dataset[:int(len(dataset)*splits[0])], self.data_dim, self.num_output))
-        self.subsets.append(TorchLoader(dataset[int(len(dataset)*splits[0]):], self.data_dim, self.num_output))
+        minIdx, maxIdx = 0, 0
+
+        for split in splits:
+            chunk = int(len(dataset) * split)
+            maxIdx += chunk
+
+            self.subsets.append(TorchLoader(dataset[minIdx:maxIdx], self.data_dim, self.num_output))
+
+            minIdx += chunk
 
     def get_loader(self, idx):
         return self.subsets[idx]
+
+    def get_set_length(self, idx):
+        return len(self.subsets[idx])
 
     def parse_directory(self, directory, cid):
         directory = os.path.join("Processed", directory)

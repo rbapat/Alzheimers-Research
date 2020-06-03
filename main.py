@@ -19,18 +19,21 @@ SAVE_FREQ = 100
 SAVE_MODEL = True
 GRAPH_FREQ = 10
 GRAPH_METRICS = True
+EARLY_STOP_THRESH = 90
 
 # data shapes
 DATA_DIM = (128, 128, 64)
 NUM_OUTPUTS = 2
 
 def main():
-    dataset = DataParser("dataset.csv", DATA_DIM, NUM_OUTPUTS)
+    dataset = DataParser("dataset.csv", DATA_DIM, NUM_OUTPUTS, splits = [0.6, 0.2, 0.2])
 
     # initialize the data loaders needed for training and validation
+    # TODO: increase validation/test batch size to something nicer than 1
     train_loader = DataLoader(dataset.get_loader(0), batch_size = BATCH_SIZE, shuffle = True)
     val_loader = DataLoader(dataset.get_loader(1), batch_size = 1, shuffle = True)
-    loaders = [train_loader, val_loader]
+    test_loader = DataLoader(dataset.get_loader(2), batch_size = 1, shuffle = True)
+    loaders = [train_loader, val_loader, test_loader]
 
     # initialize matplotlib graph and get references to lists to be graphed
     grapher = TrainGrapher(GRAPH_METRICS, "Accuracy", "Loss")
@@ -38,12 +41,12 @@ def main():
     losses = grapher.add_lines("Loss", "Train Loss", "Validation Loss")
 
     # initialize model, loss function, and optimizer
-    model = ExperimentalModel(*DATA_DIM, NUM_OUTPUTS).cuda()
+    model = ADModel(*DATA_DIM, NUM_OUTPUTS).cuda()
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr = LEARNING_RATE, weight_decay = WEIGHT_DECAY)
 
     # load the model weights from disk if it exists
-    if LOAD_WEIGHT and os.path.exists('optimal.t7'):
+    if LOAD_WEIGHT and os.path.exists('optimal.t7') and model.identifier == 'Baseline':
         ckpt = torch.load('optimal.t7')
         model.load_state_dict(ckpt['state_dict'])
         optimizer.load_state_dict(ckpt['optimizer'])
@@ -63,9 +66,15 @@ def main():
         os.mkdir('checkpoints')
 
     # run main training loop. Validation set is tested after every training iteration
+    exit_early, stop_early = False, False
     for epoch in range(NUM_EPOCHS):
-        for phase in range(2): # phase: 0 = train, 1 = val
+        for phase in range(len(loaders)): # phase: 0 = train, 1 = val, 2 = test
             running_loss, running_correct = 0.0, 0.0
+
+            # dont use test set unless we are in early stopping phase
+            if not stop_early and phase == 2:
+                continue
+
             for (data, label) in loaders[phase]:
                 # convert data to cuda because model is cuda
                 data, label = data.cuda(), label.type(torch.LongTensor).cuda()
@@ -94,27 +103,43 @@ def main():
 
             if phase == 0:
                 print("Epoch %d/%d, train accuracy: %.2f" % (epoch + 1, NUM_EPOCHS, true_accuracy), end ="") 
-            if phase == 1:
+            elif phase == 1:
                 print(", val accuracy: %.2f, val loss: %.4f" % (true_accuracy, true_loss))
+            elif phase == 2:
+                print("Model stopping early with an accuracy of %.2f and a loss of %.2f" % (true_accuracy, true_loss))
+                exit_early = True
+                break
+
+            if phase == 1 and true_accuracy > EARLY_STOP_THRESH:
+                stop_early = True
+
 
             # add metrics to list to be graphed
-            accuracy[phase].append(true_accuracy)
-            losses[phase].append(true_loss)
+            if phase < 2:
+                accuracy[phase].append(true_accuracy)
+                losses[phase].append(true_loss)
 
         # update graph with new data every GRAPH_FREQ epochs
         if epoch % GRAPH_FREQ == 0:
             grapher.update()
 
         # output model weights to checkpoints directory if specified
-        if SAVE_MODEL and epoch % SAVE_FREQ == 0:
+        if exit_early or (SAVE_MODEL and epoch % SAVE_FREQ == 0):
             state = {
                 'state_dict': model.state_dict(),
                 'optimizer': optimizer.state_dict()
             }
 
-            path = os.path.join('checkpoints', 'epoch_%d.t7' % epoch)
+            # save model with early_stop_ prefix if needed
+            prefix = ""
+            if exit_early:
+                prefix = "early_stop_"
+
+            path = os.path.join('checkpoints', '%sepoch_%d.t7' % (prefix, epoch))
             torch.save(state, path)
 
+        if exit_early:
+            break
 
     grapher.show()
 
