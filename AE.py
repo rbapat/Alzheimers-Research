@@ -2,16 +2,15 @@ from torch.utils.data import DataLoader
 from dataset import DataParser
 from util import TrainGrapher
 import torch.optim as optim
-import multiprocessing
-import torch.nn as nn
 from model import *
+import torch.nn as nn
 import torch
 import os
 
 # model hyperparameters
 LEARNING_RATE = 0.0001
 NUM_EPOCHS = 1000
-BATCH_SIZE = 5
+BATCH_SIZE = 25
 WEIGHT_DECAY = 0.00001
 
 # weight/graphing parameters
@@ -24,7 +23,7 @@ EARLY_STOP_THRESH = 90
 
 # data shapes
 DATA_DIM = (128, 128, 64)
-NUM_OUTPUTS = 3
+NUM_OUTPUTS = 2
 
 def main():
     dataset = DataParser("dataset.csv", DATA_DIM, NUM_OUTPUTS, splits = [0.6, 0.2, 0.2])
@@ -32,41 +31,19 @@ def main():
     # initialize the data loaders needed for training and validation
     # TODO: increase validation/test batch size to something nicer than 1
     train_loader = DataLoader(dataset.get_loader(0), batch_size = BATCH_SIZE, shuffle = True)
-    val_loader = DataLoader(dataset.get_loader(1), batch_size = BATCH_SIZE, shuffle = True)
-    test_loader = DataLoader(dataset.get_loader(2), batch_size = BATCH_SIZE, shuffle = True)
+    val_loader = DataLoader(dataset.get_loader(1), batch_size = 1, shuffle = True)
+    test_loader = DataLoader(dataset.get_loader(2), batch_size = 1, shuffle = True)
     loaders = [train_loader, val_loader, test_loader]
 
     # initialize matplotlib graph and get references to lists to be graphed
-    grapher = TrainGrapher(GRAPH_METRICS, "Accuracy", "Loss")
-    accuracy = grapher.add_lines("Accuracy", "Train Accuracy", "Validation Accuracy")
+    grapher = TrainGrapher(GRAPH_METRICS, "Loss")
     losses = grapher.add_lines("Loss", "Train Loss", "Validation Loss")
 
     # initialize model, loss function, and optimizer
-    model = InceptionModel(*DATA_DIM, NUM_OUTPUTS).cuda()
-    criterion = nn.CrossEntropyLoss()
-    optimizer = optim.RMSprop(model.parameters(), lr = LEARNING_RATE, weight_decay = WEIGHT_DECAY)
+    model = ADModelAE(*DATA_DIM, NUM_OUTPUTS).cuda()
+    criterion = nn.MSELoss()
+    optimizer = optim.Adam(model.parameters(), lr = LEARNING_RATE, weight_decay = WEIGHT_DECAY)
 
-    # load the model weights from disk if it exists
-    if LOAD_WEIGHT and os.path.exists('optimal.t7') and model.identifier == 'optimal':
-        ckpt = torch.load('optimal.t7')
-        model.load_state_dict(ckpt['state_dict'])
-        optimizer.load_state_dict(ckpt['optimizer'])
-
-    # load weights from this model to only the first few layers
-    if os.path.exists('pretrain.t7'):
-        #state_dict = torch.load('pretrain.t7')['state_dict']
-        with torch.no_grad():
-            ckpt = torch.load('pretrain.t7')
-            for name, param in ckpt['state_dict'].items():
-            	if name not in model.state_dict():
-            		continue
-
-            	model.state_dict()[name].copy_(param)
-            	model.state_dict()[name].requires_grad = False
-
-            	print("Loaded", name)
-
-            print("Pretrained Weights Loaded!")
 
     # if checkpoint directory doesnt exist, create one if needed
     if SAVE_MODEL and not os.path.exists('checkpoints'):
@@ -84,18 +61,17 @@ def main():
 
             for (data, label) in loaders[phase]:
                 # convert data to cuda because model is cuda
-                data, label = data.cuda(), label.type(torch.LongTensor).cuda()
+                data = data.cuda()
 
                 # eval mode changes behavior of dropout and batch norm for validation
-                
-                model.train(phase == 0)
-                probs = model(data)
+                if phase == 0:
+                    model.train()
+                elif phase == 1:
+                    model.eval()
 
-                # get class predictions
-                label = torch.argmax(label, dim = 1)
-                preds = torch.argmax(model.softmax(probs), dim = 1)
+                decoded = model(data)
 
-                loss = criterion(probs, label)
+                loss = criterion(decoded, data)
                 optimizer.zero_grad()
 
                 # backprop if in training phase
@@ -103,29 +79,22 @@ def main():
                     loss.backward()
                     optimizer.step()
 
-                # TODO: Loss calculation might be incorrect, check it
                 running_loss += loss.item() * len(data)
-                running_correct += (preds == label).sum().item()
 
             # get metrics over entire dataset
-            true_accuracy = 100 * running_correct / len(dataset.get_loader(phase))
             true_loss = running_loss / len(dataset.get_loader(phase))
 
             if phase == 0:
-                print("Epoch %d/%d, train accuracy: %.2f" % (epoch, NUM_EPOCHS, true_accuracy), end ="") 
+                print("Epoch %d/%d, train loss: %.4f" % (epoch, NUM_EPOCHS, true_loss), end = "") 
             elif phase == 1:
-                print(", val accuracy: %.2f, val loss: %.4f" % (true_accuracy, true_loss))
+                print(", val loss: %.4f" % true_loss)
             elif phase == 2:
-                print("Model stopping early with an accuracy of %.2f and a loss of %.2f" % (true_accuracy, true_loss))
+                print("Model stopping early with a loss of %.4f" % true_loss)
                 exit_early = True
                 break
 
-            if phase == 1 and true_accuracy > EARLY_STOP_THRESH:
-                stop_early = True
-
             # add metrics to list to be graphed
             if phase < 2:
-                accuracy[phase].append(true_accuracy)
                 losses[phase].append(true_loss)
 
         # update graph with new data every GRAPH_FREQ epochs

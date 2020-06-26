@@ -36,7 +36,7 @@ class DataParser:
         self.num_output = num_output
 
         self.parse_csv(csv_path)
-        self.create_dataset(splits)
+        self.create_dataset(splits)        
 
     def get_image_id(self):
         sizes = min(len(self.cn), len(self.mci), len(self.ad))
@@ -57,9 +57,8 @@ class DataParser:
         for idx in range(self.num_output):
             dataset += self.parse_directory(dirs[idx], idx)
 
-        random.shuffle(dataset)
+        random.Random(263).shuffle(dataset)
 
-        # TODO: implement this split properly using len(splits) > 2
         if sum(splits) != 1.0:
             raise Exception("Dataset splits does not sum to 1")
 
@@ -98,6 +97,7 @@ class DataParser:
         if os.path.exists('Processed'):
             create = False
 
+        idx = [0, 0, 0]
         for (root, dirs, files) in os.walk('Original'):
             for file in files:
                 if file[-4:] == '.nii':
@@ -112,6 +112,20 @@ class DataParser:
                     brain[~mask] = 0
                     brain = data_utils.crop_scan(brain)
 
+                    '''
+                    if '\\CN\\' in root:
+                        name = os.path.join('CN', 'CN_%d.nii' % idx[0])
+                        idx[0] += 1
+                    elif '\\MCI\\' in root:
+                        name = os.path.join('MCI', 'MCI_%d.nii' % idx[1])
+                        idx[1] += 1
+                    elif '\\AD\\' in root:
+                        name = os.path.join('AD', 'AD_%d.nii' % idx[2])
+                        idx[2] += 1
+
+                    path = os.path.join('Processed', name)
+                    '''
+                        
                     path = os.path.join(root.replace('Original', 'Processed'), file)
                     if not os.path.exists(os.path.dirname(path)):
                         os.makedirs(os.path.dirname(path))
@@ -122,7 +136,7 @@ class DataParser:
 
     def parse_csv(self, csv_path):
         df = pd.read_csv(csv_path)
-        df = df[np.logical_or(df["Description"] == 'MPR; GradWarp <- MP-RAGE', df["Description"] == 'MPR; GradWarp <- MPRAGE')]
+        df = df[np.logical_or(df["Description"] == 'MPR; GradWarp; B1 Correction; N3 <- MPRAGE', df["Description"] == 'MPR; GradWarp; B1 Correction; N3 <- MP-RAGE')]
         df = df.drop_duplicates(subset="Subject ID", keep="first")
 
         self.cn = data_utils.get_group(df, "Research Group", "CN")

@@ -11,6 +11,9 @@ class TrainGrapher:
 
         if self.should_graph:
             self.fig, self.graphs = plt.subplots(1, len(graphs))
+
+            if len(graphs) == 1:
+                self.graphs = [self.graphs]
             self.graph_dict = {}
 
     def add_lines(self, graph, *lines):
