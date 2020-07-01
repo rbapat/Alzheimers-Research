@@ -16,7 +16,7 @@ class TrainGrapher:
                 self.graphs = [self.graphs]
             self.graph_dict = {}
 
-    def add_lines(self, graph, *lines):
+    def add_lines(self, graph, graph_loc, *lines):
         if not self.should_graph:
             return [[]] * len(lines)
 
@@ -25,7 +25,7 @@ class TrainGrapher:
             shape = self.line_shapes[i % len(self.line_shapes)]
             line_struct.append((title, [], shape))
 
-        self.graph_dict[graph] = line_struct
+        self.graph_dict[graph] = (line_struct, graph_loc)
 
         return [i[1] for i in line_struct]
 
@@ -37,10 +37,10 @@ class TrainGrapher:
         for i, graph_key in enumerate(self.graph_dict):
             self.graphs[i].cla()
 
-            for line in self.graph_dict[graph_key]:
+            for line in self.graph_dict[graph_key][0]:
                 self.graphs[i].plot([i + 1 for i in range(len(line[1]))], line[1], line[2], label = line[0])
 
-            self.graphs[i].legend(loc='lower left')
+            self.graphs[i].legend(loc = self.graph_dict[graph_key][1])
             self.graphs[i].title.set_text(graph_key)
 
         plt.xlabel("Epoch Number")

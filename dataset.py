@@ -42,6 +42,27 @@ class DataParser:
         sizes = min(len(self.cn), len(self.mci), len(self.ad))
         return [[i for i in j[0:sizes]["Image ID"]] for j in [self.cn, self.mci, self.ad]]
 
+    def augment_data(self, batch, dataset):
+        return dataset
+
+        master_dataset = []
+
+        for idx, data in enumerate(dataset):
+
+            augmented = nib.load(data[0])
+            mat = augmented.get_fdata()
+
+            mat += np.random.normal(0.0, np.sqrt(0.1), size = mat.shape)
+
+            augmented = nib.Nifti1Image(mat, augmented.affine)
+            path = os.path.join("Augmented", '%d_%d.nii' % (batch, idx))
+            nib.save(augmented, path)
+
+            master_dataset.append(data)
+            master_dataset.append((path, data[1]))
+
+        return master_dataset
+
     def create_dataset(self, splits):
         if not os.path.exists('Original'):
             path = os.path.join(os.getcwd(), 'Original')
@@ -52,12 +73,16 @@ class DataParser:
             self.write_stripped_dataset()
 
         dirs = ["CN", "AD", "MCI"]
+        # ** This was used when training on just CN and MCI **
+        #dirs = ["CN", "MCI", "AD"]
+
         dataset = []
 
         for idx in range(self.num_output):
             dataset += self.parse_directory(dirs[idx], idx)
 
-        random.Random(263).shuffle(dataset)
+        seed = 263
+        random.Random(seed).shuffle(dataset)
 
         if sum(splits) != 1.0:
             raise Exception("Dataset splits does not sum to 1")
@@ -65,11 +90,14 @@ class DataParser:
         self.subsets = []
         minIdx, maxIdx = 0, 0
 
-        for split in splits:
+        for idx, split in enumerate(splits):
             chunk = int(len(dataset) * split)
             maxIdx += chunk
 
-            self.subsets.append(TorchLoader(dataset[minIdx:maxIdx], self.data_dim, self.num_output))
+            subset = self.augment_data(idx, dataset[minIdx:maxIdx])
+            random.Random(seed).shuffle(subset)
+
+            self.subsets.append(TorchLoader(subset, self.data_dim, self.num_output))
 
             minIdx += chunk
 
@@ -136,7 +164,11 @@ class DataParser:
 
     def parse_csv(self, csv_path):
         df = pd.read_csv(csv_path)
+
         df = df[np.logical_or(df["Description"] == 'MPR; GradWarp; B1 Correction; N3 <- MPRAGE', df["Description"] == 'MPR; GradWarp; B1 Correction; N3 <- MP-RAGE')]
+        # ** This was used when training on just CN and MCI **
+        #df = df[np.logical_or.reduce((df["Description"] == 'MPR; GradWarp; B1 Correction <- MPRAGE', df["Description"] == 'MPR; GradWarp; B1 Correction <- MP-RAGE', df["Description"] == 'MT1; GradWarp; N3m <- MPRAGE'))]
+
         df = df.drop_duplicates(subset="Subject ID", keep="first")
 
         self.cn = data_utils.get_group(df, "Research Group", "CN")

@@ -2,9 +2,9 @@ import torch.nn as nn
 import numpy as np
 import torch
 
-class InceptionNode(nn.Module):
+class InceptionNodeV1(nn.Module):
     def __init__(self, in_dim, d1x1, r3x3, d3x3, r5x5, d5x5, dproj):
-        super(InceptionNode, self).__init__()
+        super(InceptionNodeV1, self).__init__()
 
         self.branch1 = nn.Conv3d(in_dim, d1x1, kernel_size = 1, stride = 1, padding = 0)
 
@@ -37,34 +37,39 @@ class InceptionNode(nn.Module):
         return x
 
 
-class InceptionModel(nn.Module):
+
+class InceptionModelV1(nn.Module):
     def __init__(self, in_height, in_width, in_depth, out_features):
-        super(InceptionModel, self).__init__()
+        super(InceptionModelV1, self).__init__()
         self.identifier = 'InceptionModel'
         self.dims = (in_depth, in_height, in_width)
 
         self.intro_block = nn.Sequential(
-                                            nn.Conv3d(1, 32, kernel_size = 7, stride = 2, padding  = 3),
+                                            nn.Conv3d(1, 64, kernel_size = 7, stride = 2, padding  = 3),
                                             nn.MaxPool3d(kernel_size = 3, stride = 2, padding = 1),
-                                            nn.BatchNorm3d(32),
-                                            nn.Conv3d(32, 32, kernel_size = 1, stride = 1, padding = 0),
-                                            nn.Conv3d(32, 64, kernel_size = 3, stride = 1, padding = 1),
                                             nn.BatchNorm3d(64),
+                                            nn.Conv3d(64, 64, kernel_size = 1, stride = 1, padding = 0),
+                                            nn.Conv3d(64, 192, kernel_size = 3, stride = 1, padding = 1),
+                                            nn.BatchNorm3d(192),
                                             nn.MaxPool3d(kernel_size = 3, stride = 2, padding = 1)
                                         )
 
                             #in, d1x1, r3x3, d3x3, r5x5, d5x5, dproj 
-        self.incept1 = InceptionNode(64, 64, 96, 128, 16, 32, 32)
-        self.incept2 = InceptionNode(256, 128, 128, 192, 32, 96, 64)
+        #self.incept1 = InceptionNodeV1(192, 64, 96, 128, 16, 32, 32)
+        #self.incept2 = InceptionNodeV1(256, 128, 128, 192, 32, 96, 64)
 
         self.pool1 = nn.MaxPool3d(kernel_size = 3, stride = 2, padding = 1)
-
-        self.incept3 = InceptionNode(480, 192, 96, 208, 16, 48, 64)
-        self.incept4 = InceptionNode(512, 160, 112, 224, 24, 64, 64)
-         self.incept5 = InceptionNode(512, 128, 128, 256, 24, 64, 64)
+        
+        #480 
+        self.incept3 = InceptionNodeV1(192, 192, 96, 208, 16, 48, 64)
+        self.incept4 = InceptionNodeV1(512, 160, 112, 224, 24, 64, 64)
+        self.incept5 = InceptionNodeV1(512, 128, 128, 256, 24, 64, 64)
+        #self.incept6 = InceptionNodeV1(512, 112, 144, 288, 32, 64, 64)
+        #self.incept7 = InceptionNodeV1(528, 256, 160, 320, 32, 128, 128)
 
         self.pool2 = nn.AvgPool3d(kernel_size = 2, stride = 2, padding = 0)
         
+        #832
         self.linear_dims = 512 * in_width * in_height * in_depth // (2**5)**3
 
         self.drop = nn.Dropout(0.4)
@@ -78,14 +83,16 @@ class InceptionModel(nn.Module):
 
         x = self.intro_block(x)
 
-        x = self.incept1(x)
-        x = self.incept2(x)
+        #x = self.incept1(x)
+        #x = self.incept2(x)
 
         x = self.pool1(x)
 
         x = self.incept3(x)
         x = self.incept4(x)
-        #x = self.incept5(x)
+        x = self.incept5(x)
+        #x = self.incept6(x)
+        #x = self.incept7(x)
 
         x = self.pool2(x)
 

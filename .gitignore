@@ -1,6 +1,8 @@
 # Directories with ADNI data
 Processed/
 Original/
+MCIADOriginal/
+MCIADProcessed/
 
 # ADNI specific information
 dataset.csv

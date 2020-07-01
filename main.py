@@ -4,9 +4,11 @@ from util import TrainGrapher
 import torch.optim as optim
 import multiprocessing
 import torch.nn as nn
-from model import *
 import torch
 import os
+
+#from model import *
+from inception import *
 
 # model hyperparameters
 LEARNING_RATE = 0.0001
@@ -24,27 +26,27 @@ EARLY_STOP_THRESH = 90
 
 # data shapes
 DATA_DIM = (128, 128, 64)
-NUM_OUTPUTS = 3
+NUM_OUTPUTS = 2
 
 def main():
-    dataset = DataParser("dataset.csv", DATA_DIM, NUM_OUTPUTS, splits = [0.6, 0.2, 0.2])
+    dataset = DataParser("dataset.csv", DATA_DIM, NUM_OUTPUTS, splits = [0.8, 0.2])
 
     # initialize the data loaders needed for training and validation
     # TODO: increase validation/test batch size to something nicer than 1
     train_loader = DataLoader(dataset.get_loader(0), batch_size = BATCH_SIZE, shuffle = True)
     val_loader = DataLoader(dataset.get_loader(1), batch_size = BATCH_SIZE, shuffle = True)
-    test_loader = DataLoader(dataset.get_loader(2), batch_size = BATCH_SIZE, shuffle = True)
-    loaders = [train_loader, val_loader, test_loader]
+    #test_loader = DataLoader(dataset.get_loader(2), batch_size = BATCH_SIZE, shuffle = True)
+    loaders = [train_loader, val_loader]#, test_loader]
 
     # initialize matplotlib graph and get references to lists to be graphed
     grapher = TrainGrapher(GRAPH_METRICS, "Accuracy", "Loss")
-    accuracy = grapher.add_lines("Accuracy", "Train Accuracy", "Validation Accuracy")
-    losses = grapher.add_lines("Loss", "Train Loss", "Validation Loss")
+    accuracy = grapher.add_lines("Accuracy", 'lower left', "Train Accuracy", "Validation Accuracy")
+    losses = grapher.add_lines("Loss", 'upper right', "Train Loss", "Validation Loss")
 
     # initialize model, loss function, and optimizer
     model = InceptionModel(*DATA_DIM, NUM_OUTPUTS).cuda()
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.RMSprop(model.parameters(), lr = LEARNING_RATE, weight_decay = WEIGHT_DECAY)
+    optimizer = optim.SGD(model.parameters(), lr = LEARNING_RATE, weight_decay = WEIGHT_DECAY)
 
     # load the model weights from disk if it exists
     if LOAD_WEIGHT and os.path.exists('optimal.t7') and model.identifier == 'optimal':
@@ -53,7 +55,7 @@ def main():
         optimizer.load_state_dict(ckpt['optimizer'])
 
     # load weights from this model to only the first few layers
-    if os.path.exists('pretrain.t7'):
+    if os.path.exists('pretrain.t7') and False:
         #state_dict = torch.load('pretrain.t7')['state_dict']
         with torch.no_grad():
             ckpt = torch.load('pretrain.t7')
