@@ -5,7 +5,7 @@ MCIADOriginal/
 MCIADProcessed/
 
 # ADNI specific information
-dataset.csv
+feature_rich_dataset.csv
 data_query.pdf
 
 # Model weights

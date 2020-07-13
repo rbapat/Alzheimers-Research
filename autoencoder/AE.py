@@ -2,7 +2,7 @@ from torch.utils.data import DataLoader
 from dataset import DataParser
 from util import TrainGrapher
 import torch.optim as optim
-from model import *
+from AEModel import *
 import torch.nn as nn
 import torch
 import os
@@ -10,7 +10,7 @@ import os
 # model hyperparameters
 LEARNING_RATE = 0.0001
 NUM_EPOCHS = 1000
-BATCH_SIZE = 25
+BATCH_SIZE = 1
 WEIGHT_DECAY = 0.00001
 
 # weight/graphing parameters
@@ -40,7 +40,7 @@ def main():
     losses = grapher.add_lines("Loss", "Train Loss", "Validation Loss")
 
     # initialize model, loss function, and optimizer
-    model = ADModelAE(*DATA_DIM, NUM_OUTPUTS).cuda()
+    model = AEInceptionModel(*DATA_DIM, NUM_OUTPUTS).cuda()
     criterion = nn.MSELoss()
     optimizer = optim.Adam(model.parameters(), lr = LEARNING_RATE, weight_decay = WEIGHT_DECAY)
 

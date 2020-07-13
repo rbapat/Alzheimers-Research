@@ -25,10 +25,14 @@ class TorchLoader(Dataset):
         mat = nib.load(data[0])
         mat = transform.resize(torch.Tensor(mat.get_fdata()), self.data_dim)
 
-        one_hot = np.zeros(self.num_output)
-        one_hot[data[1]] = 1
+        class_tuple = data[1]
+        non_imaging_inputs = torch.tensor(class_tuple[1:])
+        #(cid, is_male, not is_female, *(class_data[i].values[0] for i in ["MMSE Total Score","Global CDR","FAQ Total Score"]))
 
-        return mat, one_hot
+        one_hot = np.zeros(self.num_output)
+        one_hot[class_tuple[0]] = 1
+
+        return mat, one_hot, non_imaging_inputs
 
 class DataParser:
     def __init__(self, csv_path, data_dim, num_output, splits = [0.8, 0.2]):
@@ -37,31 +41,6 @@ class DataParser:
 
         self.parse_csv(csv_path)
         self.create_dataset(splits)        
-
-    def get_image_id(self):
-        sizes = min(len(self.cn), len(self.mci), len(self.ad))
-        return [[i for i in j[0:sizes]["Image ID"]] for j in [self.cn, self.mci, self.ad]]
-
-    def augment_data(self, batch, dataset):
-        return dataset
-
-        master_dataset = []
-
-        for idx, data in enumerate(dataset):
-
-            augmented = nib.load(data[0])
-            mat = augmented.get_fdata()
-
-            mat += np.random.normal(0.0, np.sqrt(0.1), size = mat.shape)
-
-            augmented = nib.Nifti1Image(mat, augmented.affine)
-            path = os.path.join("Augmented", '%d_%d.nii' % (batch, idx))
-            nib.save(augmented, path)
-
-            master_dataset.append(data)
-            master_dataset.append((path, data[1]))
-
-        return master_dataset
 
     def create_dataset(self, splits):
         if not os.path.exists('Original'):
@@ -72,14 +51,16 @@ class DataParser:
             print("Warning: Skull Stripped dataset does not exist, stripping right now.")
             self.write_stripped_dataset()
 
-        dirs = ["CN", "AD", "MCI"]
-        # ** This was used when training on just CN and MCI **
-        #dirs = ["CN", "MCI", "AD"]
-
         dataset = []
+        for (root, dirs, files) in os.walk("Processed"):
+            for file in files:
+                if file[-4:] == '.nii':
+                    labels = self.get_class_data(file)
 
-        for idx in range(self.num_output):
-            dataset += self.parse_directory(dirs[idx], idx)
+                    if labels[0] > self.num_output - 1:
+                        continue
+
+                    dataset.append((os.path.join(root, file), labels))
 
         seed = 263
         random.Random(seed).shuffle(dataset)
@@ -94,7 +75,7 @@ class DataParser:
             chunk = int(len(dataset) * split)
             maxIdx += chunk
 
-            subset = self.augment_data(idx, dataset[minIdx:maxIdx])
+            subset = dataset[minIdx:maxIdx]
             random.Random(seed).shuffle(subset)
 
             self.subsets.append(TorchLoader(subset, self.data_dim, self.num_output))
@@ -107,16 +88,23 @@ class DataParser:
     def get_set_length(self, idx):
         return len(self.subsets[idx])
 
-    def parse_directory(self, directory, cid):
-        directory = os.path.join("Processed", directory)
-        subset = []
+    def get_class_data(self, filename):
+        start_idx = filename.rindex('_') + 2;
+        image_id = filename[start_idx:-4]
 
-        for (root, dirs, files) in os.walk(directory):
-            for file in files:
-                if file[-4:] == '.nii':
-                    subset.append((os.path.join(root, file), cid))
+        class_data = self.df[self.df['Image ID'] == int(image_id)]
 
-        return subset
+        cid = ["CN", "AD", "MCI"].index(class_data['Research Group'].values[0])
+
+        is_male = int(class_data["Sex"].values[0] == "M")
+        is_female = int(not is_male)
+
+        labels = [cid, is_male, is_female, *(class_data[i].values[0] for i in ["MMSE Total Score","FAQ Total Score"])] #["MMSE Total Score","FAQ Total Score"]
+        
+        labels[3] /= 30.0
+        labels[4] /= 30.0
+
+        return labels
 
     def write_stripped_dataset(self, keep_prob = 0.5):
         extractor = Extractor()
@@ -139,20 +127,6 @@ class DataParser:
                     brain = mat.get_fdata()[:]
                     brain[~mask] = 0
                     brain = data_utils.crop_scan(brain)
-
-                    '''
-                    if '\\CN\\' in root:
-                        name = os.path.join('CN', 'CN_%d.nii' % idx[0])
-                        idx[0] += 1
-                    elif '\\MCI\\' in root:
-                        name = os.path.join('MCI', 'MCI_%d.nii' % idx[1])
-                        idx[1] += 1
-                    elif '\\AD\\' in root:
-                        name = os.path.join('AD', 'AD_%d.nii' % idx[2])
-                        idx[2] += 1
-
-                    path = os.path.join('Processed', name)
-                    '''
                         
                     path = os.path.join(root.replace('Original', 'Processed'), file)
                     if not os.path.exists(os.path.dirname(path)):
@@ -161,18 +135,15 @@ class DataParser:
                     brain = nib.Nifti1Image(brain, mat.affine)
                     nib.save(brain, path)
 
-
     def parse_csv(self, csv_path):
-        df = pd.read_csv(csv_path)
+        df = pd.read_csv('feature_rich_dataset.csv')
 
-        df = df[np.logical_or(df["Description"] == 'MPR; GradWarp; B1 Correction; N3 <- MPRAGE', df["Description"] == 'MPR; GradWarp; B1 Correction; N3 <- MP-RAGE')]
-        # ** This was used when training on just CN and MCI **
-        #df = df[np.logical_or.reduce((df["Description"] == 'MPR; GradWarp; B1 Correction <- MPRAGE', df["Description"] == 'MPR; GradWarp; B1 Correction <- MP-RAGE', df["Description"] == 'MT1; GradWarp; N3m <- MPRAGE'))]
+        drops = []
+        for row in df.itertuples():
+            for i in [2, 8, 11]:
+                if row[i] != row[i]:
+                    drops.append(row[0])
+                    break
+        df = df.drop(drops)
 
-        df = df.drop_duplicates(subset="Subject ID", keep="first")
-
-        self.cn = data_utils.get_group(df, "Research Group", "CN")
-        self.mci = data_utils.get_group(df, "Research Group", "MCI")
-        self.ad = data_utils.get_group(df, "Research Group", "AD")
-
-        
+        self.df = df[np.logical_or(df["Description"] == 'MPR; GradWarp; B1 Correction; N3 <- MPRAGE', df["Description"] == 'MPR; GradWarp; B1 Correction; N3 <- MP-RAGE')]

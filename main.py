@@ -7,8 +7,7 @@ import torch.nn as nn
 import torch
 import os
 
-#from model import *
-from inception import *
+from model import *
 
 # model hyperparameters
 LEARNING_RATE = 0.0001
@@ -25,8 +24,9 @@ GRAPH_METRICS = True
 EARLY_STOP_THRESH = 90
 
 # data shapes
+NONIMAGING_FEATURES = 4
 DATA_DIM = (128, 128, 64)
-NUM_OUTPUTS = 2
+NUM_OUTPUTS = 3
 
 def main():
     dataset = DataParser("dataset.csv", DATA_DIM, NUM_OUTPUTS, splits = [0.8, 0.2])
@@ -44,18 +44,18 @@ def main():
     losses = grapher.add_lines("Loss", 'upper right', "Train Loss", "Validation Loss")
 
     # initialize model, loss function, and optimizer
-    model = InceptionModel(*DATA_DIM, NUM_OUTPUTS).cuda()
+    model = InceptionModel(*DATA_DIM, NONIMAGING_FEATURES, NUM_OUTPUTS).cuda()
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.SGD(model.parameters(), lr = LEARNING_RATE, weight_decay = WEIGHT_DECAY)
 
     # load the model weights from disk if it exists
-    if LOAD_WEIGHT and os.path.exists('optimal.t7') and model.identifier == 'optimal':
+    if LOAD_WEIGHT and os.path.exists('optimal.t7'):
         ckpt = torch.load('optimal.t7')
         model.load_state_dict(ckpt['state_dict'])
         optimizer.load_state_dict(ckpt['optimizer'])
 
     # load weights from this model to only the first few layers
-    if os.path.exists('pretrain.t7') and False:
+    if os.path.exists('pretrain.t7') and model.identifier == 'Pretrain':
         #state_dict = torch.load('pretrain.t7')['state_dict']
         with torch.no_grad():
             ckpt = torch.load('pretrain.t7')
@@ -84,14 +84,14 @@ def main():
             if not stop_early and phase == 2:
                 continue
 
-            for (data, label) in loaders[phase]:
+            for (data, label, non_imaging) in loaders[phase]:
                 # convert data to cuda because model is cuda
-                data, label = data.cuda(), label.type(torch.LongTensor).cuda()
+                data, label, non_imaging = data.cuda(), label.type(torch.LongTensor).cuda(), non_imaging.float().cuda()
 
                 # eval mode changes behavior of dropout and batch norm for validation
                 
                 model.train(phase == 0)
-                probs = model(data)
+                probs = model(data, non_imaging)
 
                 # get class predictions
                 label = torch.argmax(label, dim = 1)
