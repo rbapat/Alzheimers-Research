@@ -4,59 +4,13 @@ import pandas as pd
 import numpy as np
 import os
 
-class TrainGrapher:
-    def __init__(self, should_graph, *graphs):
-        self.should_graph = should_graph
-        self.line_shapes = ['-b', '-r', '-g']
-
-        if self.should_graph:
-            self.fig, self.graphs = plt.subplots(1, len(graphs))
-
-            if len(graphs) == 1:
-                self.graphs = [self.graphs]
-            self.graph_dict = {}
-
-    def add_lines(self, graph, graph_loc, *lines):
-        if not self.should_graph:
-            return [[]] * len(lines)
-
-        line_struct = []
-        for i, title in enumerate(lines):
-            shape = self.line_shapes[i % len(self.line_shapes)]
-            line_struct.append((title, [], shape))
-
-        self.graph_dict[graph] = (line_struct, graph_loc)
-
-        return [i[1] for i in line_struct]
-
-    def update(self):
-        if not self.should_graph:
-            return
-
-        # TODO: do i need to set_text every time?
-        for i, graph_key in enumerate(self.graph_dict):
-            self.graphs[i].cla()
-
-            for line in self.graph_dict[graph_key][0]:
-                self.graphs[i].plot([i + 1 for i in range(len(line[1]))], line[1], line[2], label = line[0])
-
-            self.graphs[i].legend(loc = self.graph_dict[graph_key][1])
-            self.graphs[i].title.set_text(graph_key)
-
-        plt.xlabel("Epoch Number")
-        plt.pause(0.0001)
-
-    def show(self):
-        if not self.should_graph:
-            return
-            
-        plt.show()
-
+# collection of useful data processing functions
 class data_utils:
     @staticmethod
     def get_group(df, header, group):
         return df[df[header] == group]
 
+    # counts the occurences of each value of a given header in a pandas DataFrame
     @staticmethod
     def count_occurences(df, header):
         freq_dict = {}
@@ -69,6 +23,7 @@ class data_utils:
 
         return sorted(freq_dict.items(), key = lambda x: x[1], reverse = True)
 
+    # gets the 3D bounds of a skull-stripped MRI frame
     @staticmethod
     def get_volumetric_bounds(scan, axis):
         coords = [(-1, -1), (-1, -1), (-1, -1), (-1, -1)]
@@ -111,6 +66,7 @@ class data_utils:
 
         return coords
 
+    # renders a 3D mri frame using matplotlib
     @staticmethod
     def render_scan(scan):
         fig, axes = plt.subplots(1, len(scan.shape))
@@ -132,6 +88,7 @@ class data_utils:
 
         plt.show()
 
+    # crops all the 0 padding out of a skull stripped MRI scan
     @staticmethod
     def crop_scan(scan):
         coordX = data_utils.get_volumetric_bounds(scan, 0)

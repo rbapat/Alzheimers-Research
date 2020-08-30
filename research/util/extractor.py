@@ -1,6 +1,8 @@
 '''
 SCRIPT ADAPTED TO TENSORFLOW v2 FROM https://github.com/iitzco/deepbrain/tree/master/deepbrain
 '''
+import warnings
+warnings.filterwarnings("ignore")
 
 import tensorflow as tf
 import numpy as np

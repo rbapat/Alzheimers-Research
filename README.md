@@ -2,20 +2,20 @@
 
 Predicting diagnosis of Alzheimer's Disease using Brain MRI scans 
 
-
+## Installing Package (Mandatory)
+- run `pip3 install -e .` from `Alzheimers-Research/` to install the codebase as a package
 
 ### File Structure
 
-- `main.py`: Main driver for training and evaluating the model
-- `dataset.py`: Classes for managing and parsing the dataset
-- `model.py`: Defines the PyTorch model being used
-- `util.py`: Helper classes and functions for the project
+- `research/main.py`: Main driver for training and evaluating the model
+- `research/datasets/`: Dataset parsers
+	- `research/datasets/classification_dataset.py`: main dataset for parsing the classification data
+- `research/models/`: Directory for models being evaluated
+- `research/util/`: Directory for different helper classes and smaller scripts
 
 ### Omissions
 
 - Some files are omitted because it contains ADNI specific data; this includes 
-  - `data_query.pdf`: Exact query used to download ADNI data
-  - `dataset.csv`: Data labels downloaded from ADNI using custom query
+  - Several dataset csv files
   - `*.t7`: weights trained and outputted by model
-  - `Processed/*`: Preprocessed data
-  - `Original/*`: Raw data from ADNI
+  - `ADNI/*`: .nii scans downloaded from ADNI database
