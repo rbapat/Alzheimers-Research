@@ -3,6 +3,19 @@ import skimage.transform
 import numpy as np
 import torch
 
+class Conv3d(nn.Module):
+    def __init__(self, in_features, out_features, **kwargs):
+        super(Conv3d, self).__init__()
+        self.model = nn.Sequential(
+                                        nn.Conv3d(in_features, out_features, bias=False, **kwargs),
+                                        nn.BatchNorm3d(out_features),
+                                        nn.ReLU()
+                                    )
+
+    def forward(self, x):
+        return self.model(x)    
+
+
 class EModel(nn.Module):
     def __init__(self, in_height, in_width, in_depth, out_features):
         super(EModel, self).__init__()

@@ -8,31 +8,25 @@ import os
 
 from research.util.Grapher import TrainGrapher
 from research.datasets.classification_dataset import DataParser
-#from research.datasets.freesurfer_dataset import DataParser
-
-from research.models.inception import InceptionModel
-from research.models.experimental import EModel
-from research.models.svoxnet import SVoxNet
-from research.models.densenet import DenseNet
+from research.models.autoencoder import AEStem
 
 # model hyperparameters
-LEARNING_RATE = 0.001
-MOMENTUM = 0.9
-WEIGHT_DECAY = 0
+LEARNING_RATE = 0.0001
 NUM_EPOCHS = 1000
-BATCH_SIZE = 5
+BATCH_SIZE = 2
+WEIGHT_DECAY = 0.00001
 
 # weight/graphing parameters
 LOAD_WEIGHT = False
 SAVE_FREQ = 10
 SAVE_MODEL = True
-GRAPH_FREQ = 1
+GRAPH_FREQ = 10
 GRAPH_METRICS = True
-SAVE_THRESH = 90
+EARLY_STOP_THRESH = 90
 
 # data shapes
 DATA_DIM = (128, 128, 128)
-NUM_OUTPUTS = 2
+NUM_OUTPUTS = 3
 
 def main():
     csv_path = os.path.join(os.getcwd(), "adni_test_data.csv")
@@ -46,14 +40,13 @@ def main():
     loaders = [train_loader, val_loader]#, test_loader]
 
     # initialize matplotlib graph and get references to lists to be graphed
-    grapher = TrainGrapher(GRAPH_METRICS, "Accuracy", "Loss")
-    accuracy = grapher.add_lines("Accuracy", 'lower left', "Train Accuracy", "Validation Accuracy")
+    grapher = TrainGrapher(GRAPH_METRICS, "Loss")
     losses = grapher.add_lines("Loss", 'upper right', "Train Loss", "Validation Loss")
 
     # initialize model, loss function, and optimizer
-    model = DenseNet(*DATA_DIM, NUM_OUTPUTS).cuda()
-    criterion = nn.CrossEntropyLoss()
-    optimizer = optim.SGD(model.parameters(), lr = LEARNING_RATE, weight_decay = WEIGHT_DECAY, momentum = MOMENTUM)
+    model = AEStem(*DATA_DIM, NUM_OUTPUTS).cuda()
+    criterion = nn.MSELoss()
+    optimizer = optim.Adam(model.parameters(), lr = LEARNING_RATE)
 
     # load the model weights from disk if it exists
     if LOAD_WEIGHT and os.path.exists('optimal.t7'):
@@ -68,18 +61,15 @@ def main():
         with torch.no_grad():
             ckpt = torch.load('pretrain.t7')
             for name, param in ckpt['state_dict'].items():
-                if name not in model.state_dict() or model.state_dict()[name].shape != param.shape:
+                if name not in model.state_dict():
                     continue
 
                 model.state_dict()[name].copy_(param)
-                #model.state_dict()[name].requires_grad = False
+                model.state_dict()[name].requires_grad = False
 
                 print("Loaded", name)
 
             print("Pretrained Weights Loaded!")
-
-    if os.path.exists('autoencoder.t7') and model.identifier =='PretrainStem':
-        model.pretrain_stem()
 
     # if checkpoint directory doesnt exist, create one if needed
     if SAVE_MODEL and not os.path.exists('checkpoints'):
@@ -102,13 +92,11 @@ def main():
                 # eval mode changes behavior of dropout and batch norm for validation
                 
                 model.train(phase == 0)
-                probs = model(data)
+                maps = model(data)
 
                 # get class predictions
-                label = torch.argmax(label, dim = 1)
-                preds = torch.argmax(model.softmax(probs), dim = 1)
 
-                loss = criterion(probs, label)
+                loss = criterion(data, maps)
 
                 optimizer.zero_grad()
 
@@ -119,38 +107,21 @@ def main():
 
                 # TODO: Loss calculation might be incorrect, check it
                 running_loss += loss.item() * len(data)
-                running_correct += (preds == label).sum().item()
 
             # get metrics over entire dataset
-            true_accuracy = 100 * running_correct / len(dataset.get_loader(phase))
             true_loss = running_loss / len(dataset.get_loader(phase))
 
             if phase == 0:
-                print("Epoch %d/%d, train accuracy: %.2f" % (epoch, NUM_EPOCHS, true_accuracy), end ="") 
+                print("Epoch %d/%d, train loss: %.4f" % (epoch, NUM_EPOCHS, true_loss), end ="") 
             elif phase == 1:
-                print(", val accuracy: %.2f, val loss: %.4f" % (true_accuracy, true_loss))
+                print(", val loss: %.4f" % (true_loss))
             elif phase == 2:
-                print("Model stopping early with an accuracy of %.2f and a loss of %.2f" % (true_accuracy, true_loss))
+                print("Model stopping early with an val loss of %.2f and a val loss of %.2f" % (val_loader, true_loss))
                 exit_early = True
                 break
 
-            if phase == 1 and true_accuracy > SAVE_THRESH:
-                state = {
-                    'state_dict': model.state_dict(),
-                    'optimizer': optimizer.state_dict()
-                }
-
-                # save model with early_stop_ prefix if needed
-                prefix = ""
-                if exit_early:
-                    prefix = "true_accuracy_%.2f_" % true_accuracy
-
-                path = os.path.join('checkpoints', '%s_%sepoch_%d.t7' % (model.identifier, prefix, epoch))
-                torch.save(state, path)
-
             # add metrics to list to be graphed
             if phase < 2:
-                accuracy[phase].append(true_accuracy)
                 losses[phase].append(true_loss)
 
         if epoch % GRAPH_FREQ == 0:

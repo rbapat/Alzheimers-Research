@@ -2,6 +2,7 @@ import skimage.transform as transform
 from torch.utils.data import DataLoader
 from torch.utils.data import Dataset
 import nibabel as nib
+import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 import random
@@ -9,37 +10,10 @@ import torch
 import xml.etree.ElementTree as ET
 import os
 
-from research.util.util import data_utils
 
-# Custom implementation of PyTorch's default data loader
-class TorchLoader(Dataset):
-    def __init__(self, dataset, data_dim, num_output):
-        self.dataset = dataset
-        self.num_output = num_output
-        self.data_dim = data_dim
-
-    def __len__(self):
-        return len(self.dataset)
-
-    def __getitem__(self, idx):
-        data = self.dataset[idx]
-        
-        # scans are loaded dynamically because I cant fit the entire dataset in RAM
-        mat = nib.load(data[0])
-        
-        mat = data_utils.crop_scan(mat.get_fdata().squeeze())
-        mat = transform.resize(torch.Tensor(mat), self.data_dim)
-
-        mat = 255 * (mat - mat.min())/(mat.max() - mat.min())
-
-        one_hot = np.zeros(self.num_output)
-        one_hot[data[1]] = 1
-
-        return mat, one_hot
 
 class DataParser:
-    def __init__(self, data_dim, num_output, splits = [0.8, 0.2]):
-        self.data_dim = data_dim
+    def __init__(self, num_output, splits = [0.8, 0.2]):
         self.num_output = num_output
         
         self.create_dataset(splits)
@@ -99,12 +73,70 @@ class DataParser:
             subset = dataset[minIdx:maxIdx]
             random.shuffle(subset)
 
-            self.subsets.append(TorchLoader(subset, self.data_dim, self.num_output))
-
+            self.subsets.append(subset)
             minIdx += chunk
 
-    def get_loader(self, idx):
-        return self.subsets[idx]
+def render_scan(scan):
+    fig, axes = plt.subplots(1, len(scan.shape))
+    for i in range(scan.shape[1]):
 
-    def get_set_length(self, idx):
-        return len(self.subsets[idx])
+        for j in range(len(scan.shape)):
+            axes[j].cla()
+
+        subscans = [
+                    scan[min(i, scan.shape[0]) - 1, :, :],
+                    scan[:, min(i, scan.shape[1]) - 1, :],
+                    scan[:, :, min(i, scan.shape[2] - 1)]
+                    ]
+
+        for j in range(len(scan.shape)):
+            axes[j].imshow(subscans[j], cmap="gray", origin="lower")
+
+        plt.pause(0.0001)
+
+    plt.show()
+
+def main():
+    parser = DataParser(3)
+    dataset = parser.subsets[0]
+
+    mat_shape = nib.load(dataset[0][0]).get_fdata().squeeze().shape
+    flat_shape = nib.load(dataset[0][0]).get_fdata().flatten().shape
+
+    avg_vec = np.zeros(flat_shape)
+    scatter_vec = np.zeros(flat_shape)
+
+    for idx, (path, cid) in enumerate(dataset):
+        print("[%d/%d] Average Vector" % (idx + 1, len(dataset)))
+        vector = nib.load(path).get_fdata().flatten()
+        vector /= len(dataset)
+
+        avg_vec += vector
+    
+    for idx, (path, cid) in enumerate(dataset):
+        print("[%d/%d] Scatter Vector" % (idx + 1, len(dataset)))
+        vector = nib.load(path).get_fdata().flatten()
+        scatter_vec += ((vector - avg_vec) * (vector - avg_vec).T) / len(dataset)
+
+    scatter_mat = np.reshape(scatter_vec, mat_shape)
+    avg_mat = np.reshape(avg_vec, mat_shape)
+
+    eigen_val, eigen_vec = np.linalg.eig(scatter_mat)
+
+    
+    eig_pairs = [(eigen_val[index], eigen_vec[:,index]) for index in range(len(eigen_val))]
+
+    pair = eig_pairs[0]
+    rside = pair[0] * pair[1]
+
+    lside = nib.load(dataset[0][0]).get_fdata() * pair[1]
+
+    print(rside.shape, lside.shape)
+
+        
+
+    
+
+
+if __name__ == '__main__':
+    main()

@@ -6,13 +6,14 @@ import torch.optim as optim
 import multiprocessing
 import copy
 import argparse
+import numpy as np
 import torch.nn as nn
 import torch
 import os
 import matplotlib.pyplot as plt
 import cv2
 
-from research.models.Inception import EModel
+from research.models.densenet import DenseNet
 from research.datasets.classification_dataset import DataParser
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
@@ -33,7 +34,7 @@ EARLY_STOP_THRESH = 90
 
 # data shapes
 NONIMAGING_FEATURES = 5
-DATA_DIM = (128, 128, 64)
+DATA_DIM = (128, 128, 128)
 NUM_OUTPUTS = 2
 
 '''
@@ -62,16 +63,16 @@ def main():
     parser.add_argument("--dx", help="which class (0 = CN, 1 = AD)")
     args = parser.parse_args()
 
-    dataset = DataParser(DATA_DIM, NUM_OUTPUTS, splits = [1.0])
+    dataset = DataParser("adni_test_data.csv", DATA_DIM, NUM_OUTPUTS, splits = [1.0])
     loader = DataLoader(dataset.get_loader(0), batch_size = 1, shuffle = True)
     loader = iter(loader)
 
     # initialize model, loss function, and optimizer
-    model = InceptionModel(*DATA_DIM, NUM_OUTPUTS).cuda()
+    model = DenseNet(*DATA_DIM, NUM_OUTPUTS).cuda()
 
     # load the model weights from disk if it exists
-    if LOAD_WEIGHT and os.path.exists('optimal_clip'):
-        ckpt = torch.load('optimal_clip')
+    if LOAD_WEIGHT and os.path.exists('weights.t7'):
+        ckpt = torch.load('weights.t7')
         model.load_state_dict(ckpt['state_dict'])
         print("Loaded Weights!")
 
@@ -86,7 +87,7 @@ def main():
 
     if args.dx is not None:
         while label[0][int(args.dx)] != 1:
-            data_cpu, label, non_imaging = next(loader)
+            data_cpu, label = next(loader)
 
 
     # convert data to cuda because model is cuda
@@ -151,8 +152,8 @@ def main():
     clipped = get_cam(conv_features_clip, linear_features, idx, (h,w,d), (128, 128, 64))
     '''
 
-    clipped = get_cam(conv_features, linear_features, idx, (h,w,d), (128, 128, 64))
-    in_mat = skimage.transform.resize(data_cpu[0], (128, 128, 64), anti_aliasing = True, preserve_range = True, mode = 'edge')
+    clipped = get_cam(conv_features, linear_features, idx, (h,w,d), (128, 128, 128))
+    in_mat = skimage.transform.resize(data_cpu[0], (128, 128, 128), anti_aliasing = True, preserve_range = True, mode = 'edge')
 
     # Clip heatmap perfectly
     '''

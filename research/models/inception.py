@@ -231,15 +231,34 @@ class InceptionModel(nn.Module):
         self.reduceB = InceptionReduceB(512)
 
         self.inceptC1 = InceptionNodeC(896)
-        #self.inceptC2 = InceptionNodeC(1440)
+        self.inceptC2 = InceptionNodeC(1440)
 
         self.end_pool = nn.AdaptiveAvgPool3d((1,1,1))
 
         self.fc = nn.Linear(1440, out_features)
         self.drop = nn.Dropout(0.4)
+        self.drop1 = nn.Dropout3d(0.2)
+        self.drop2 = nn.Dropout3d(0.2)
 
         self.softmax = nn.Softmax(dim = 1)
 
+    def pretrain_stem(self):
+        with torch.no_grad():
+            ckpt = torch.load('autoencoder.t7')
+
+            cnt = 0
+            for name, param in ckpt['state_dict'].items():
+
+                real = "stem.%d.%s" % (int(cnt / 6), name[8:])
+                if real in self.state_dict():
+                    self.state_dict()[real].copy_(param)
+                    print("Loaded Autoencoder %s" % real)
+
+                cnt += 1
+                if cnt == 18:
+                    cnt = 24
+
+        print("Autoencoder Weights Loaded!")
     def forward(self, x):
         masks = []
 
@@ -261,19 +280,21 @@ class InceptionModel(nn.Module):
 
         x = self.inceptA1(x)
         x = self.inceptA2(x)
-        x = self.inceptA3(x)
+        #x = self.inceptA3(x)
 
         x = self.reduceA(x)
 
         x = self.inceptB1(x)
-        x = self.inceptB2(x)
-        x = self.inceptB3(x)
+        x# = self.inceptB2(x)
+        #x = self.inceptB3(x)
         #x = self.inceptB4(x)
         #x = self.inceptB5(x)
 
         x = self.reduceB(x)
+        #x = self.drop1(x)
 
         x = self.inceptC1(x)
+        #x = self.drop2(x)
         #x = self.inceptC2(x)
         
         '''

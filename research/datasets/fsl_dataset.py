@@ -56,9 +56,9 @@ class DataParser:
             self.write_stripped_dataset()
 
         dataset = []
-        for (root, dirs, files) in os.walk(os.path.join('ADNI', 'Processed')):
+        for (root, dirs, files) in os.walk(os.path.join('ADNI', 'FSL')):
             for file in files:
-                if file[-4:] == '.nii':
+                if file[-7:] == '.nii.gz':
                     cid = self.get_class_data(file)
 
                     # useful if we only want CN/AD or we want CN/AD/MCI
@@ -93,7 +93,7 @@ class DataParser:
 
     def get_class_data(self, filename):
         start_idx = filename.rindex('_') + 2;
-        image_id = int(filename[start_idx:-4])
+        image_id = int(filename[start_idx:-7])
 
         subj = self.df[self.df["Image ID"] == image_id]
         cid = ["CN", "AD", "MCI"].index(subj.iloc[0]["Research Group"])
