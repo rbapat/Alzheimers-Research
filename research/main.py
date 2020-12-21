@@ -6,7 +6,7 @@ import torch
 import shutil
 import os
 
-from research.datasets.reject_dataset import DataParser
+from research.datasets.scored_dataset import DataParser
 from research.util.Grapher import TrainGrapher
 from research.models.densenet import DenseNet
 
@@ -16,7 +16,8 @@ MOMENTUM = 0.9
 WEIGHT_DECAY = 0
 NUM_EPOCHS = 1000
 BATCH_SIZE = 5
-TOLERANCE = (0.1, 0.1, 0.1, 0.1, 0.1)
+#TOLERANCE = (0.1, 0.1, 0.1, 0.1, 0.1)
+TOLERANCE = (0.2,)
 
 # weight/graphing parameters
 GRAPH_METRICS = True
@@ -77,11 +78,11 @@ def main():
                 running_correct += sum([(difference[:, i] < x).sum().item() for i,x in enumerate(TOLERANCE)]) / float(num_outputs)
 
             # get metrics over entire dataset
-            true_accuracy = 100 * running_correct / len(dataset.get_loader(phase))
-            true_loss = running_loss / len(dataset.get_loader(phase))
+            true_accuracy = 100 * running_correct / len(dataset.get_subset(phase))
+            true_loss = running_loss / len(dataset.get_subset(phase))
 
             if phase == 0:
-                print("Epoch %d/%d, train accuracy: %.2f, train loss: %.4f" % (epoch, NUM_EPOCHS, true_accuracy), end ="") 
+                print("Epoch %d/%d, train accuracy: %.2f, train loss: %.4f" % (epoch, NUM_EPOCHS, true_accuracy, true_loss), end ="") 
             elif phase == 1:
                 print(", val accuracy: %.2f, val loss: %.4f" % (true_accuracy, true_loss))
             elif phase == 2:

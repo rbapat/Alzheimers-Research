@@ -9,7 +9,7 @@ class DataParser(BaseParser):
         self.extension = '.nii.gz'
         self.ground_truth = self.create_truth_dictionary()
 
-        self.create_dataset(splits, "LongRejects")
+        self.create_dataset(splits, "LongRejects_FSL")
 
     def create_truth_dictionary(self):
         df = pd.read_csv("LongRejects.csv")

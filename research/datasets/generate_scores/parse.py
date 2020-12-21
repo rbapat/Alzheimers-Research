@@ -44,7 +44,7 @@ def main():
 		elif len(d) == 1 and d[0] == "Dementia":
 			ad_ad.add(scan["PTID"])
 
-	base_dataset(df, cn_cn.union(ad_ad))
+	base_dataset(df, cn_cn.union(ad_ad, mci_mci))
 
 	'''
 	print(len(cn_mci))	# 96

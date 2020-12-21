@@ -23,6 +23,10 @@ class TorchLoader(Dataset):
         mat = nib.load(data[0])
         mat = transform.resize(torch.Tensor(mat.get_fdata()), self.data_dim)
 
+        # hacky fix to corner case
+        if type(data[1]) == type(0.0):
+            return mat, torch.Tensor([data[1]])
+
         return mat, torch.Tensor(data[1])
 
 class BaseParser:
