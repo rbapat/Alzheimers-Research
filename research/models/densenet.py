@@ -1,6 +1,9 @@
+import skimage.transform
+import skimage.color
 import torch.nn as nn
 import numpy as np
 import torch
+import math
 
 class Conv3d(nn.Module):
     def __init__(self, in_features, out_features, **kwargs):
@@ -13,41 +16,6 @@ class Conv3d(nn.Module):
 
     def forward(self, x):
         return self.model(x)
-
-
-class DenseInception(nn.Module):
-    def __init__(self, in_features, growth_rate):
-        super(DenseInception, self).__init__()
-
-        middle_in, middle_out = 4 * growth_rate, growth_rate // 4
-
-        self.channel1 = Conv3d(in_features, middle_out, kernel_size = 1, stride = 1, padding = 0)
-
-        self.channel2 = nn.Sequential(
-                                        Conv3d(in_features, middle_in, kernel_size = 1, stride = 1, padding = 0),
-                                        Conv3d(middle_in, middle_out, kernel_size = 3, stride = 1, padding = 1)
-                                    )
-
-        self.channel3 = nn.Sequential(
-                                        Conv3d(in_features, middle_in, kernel_size = 1, stride = 1, padding = 0),
-                                        Conv3d(middle_in, middle_in, kernel_size = 3, stride = 1, padding = 1),
-                                        Conv3d(middle_in, middle_out, kernel_size = 3, stride = 1, padding = 1)
-                                    )
-
-        self.channel4 = nn.Sequential(
-                                        nn.MaxPool3d(kernel_size = 3, stride = 1, padding = 1),
-                                        Conv3d(in_features, middle_out, kernel_size = 1, stride = 1, padding = 0)
-                                    )
-
-    def forward(self, x):
-        ch1 = self.channel1(x)
-        ch2 = self.channel2(x)
-        ch3 = self.channel3(x)
-        ch4 = self.channel4(x)
-
-        x = torch.cat([ch1, ch2, ch3, ch4], dim = 1)
-
-        return x
 
 class DenseUnit(nn.Module):
     def __init__(self, in_features, growth_rate):
