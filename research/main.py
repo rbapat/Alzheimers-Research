@@ -11,13 +11,9 @@ from research.util.Grapher import TrainGrapher
 from research.models.densenet import DenseNet
 
 # model hyperparameters
-LEARNING_RATE = 0.001
-MOMENTUM = 0.9
-WEIGHT_DECAY = 0
 NUM_EPOCHS = 1000
 BATCH_SIZE = 5
-#TOLERANCE = (0.1, 0.1, 0.1, 0.1, 0.1)
-TOLERANCE = (0.2,)
+TOLERANCE = (0.1,)
 
 # weight/graphing parameters
 GRAPH_METRICS = True
@@ -40,9 +36,10 @@ def main():
     accuracy = grapher.add_lines("Accuracy", 'lower left', "Train Accuracy", "Validation Accuracy")
     losses = grapher.add_lines("Loss", 'upper right', "Train Loss", "Validation Loss")
         
-    model = DenseNet(*DATA_DIM, num_outputs).cuda()
+    model = DenseNet(DATA_DIM, num_outputs, [6, 12, 24, 16], drop_rate = 0.0).cuda()
+
     criterion = nn.MSELoss()
-    optimizer = optim.SGD(model.parameters(), lr = LEARNING_RATE, weight_decay = WEIGHT_DECAY, momentum = MOMENTUM)
+    optimizer, scheduler = model.init_optimizer()
 
     if not os.path.exists('checkpoints'):
         os.mkdir('checkpoints')
@@ -72,12 +69,21 @@ def main():
                     loss.backward()
                     optimizer.step()
 
+                    # i dont think it makes a huge difference but should i be doing these steps
+                    # after both training and validation? since the weights get updated, then 
+                    # the train accuracy/loss will be different than the val accuracy/loss
+
+                    if scheduler is not None:
+                        scheduler.step()
+
                 running_loss += (loss.item() * len(data))
 
+                # maybe abstract this to the dataset?
                 difference = torch.abs(preds - label)
                 running_correct += sum([(difference[:, i] < x).sum().item() for i,x in enumerate(TOLERANCE)]) / float(num_outputs)
 
             # get metrics over entire dataset
+            # need to make sure these calculations are correct
             true_accuracy = 100 * running_correct / len(dataset.get_subset(phase))
             true_loss = running_loss / len(dataset.get_subset(phase))
 
@@ -85,10 +91,6 @@ def main():
                 print("Epoch %d/%d, train accuracy: %.2f, train loss: %.4f" % (epoch, NUM_EPOCHS, true_accuracy, true_loss), end ="") 
             elif phase == 1:
                 print(", val accuracy: %.2f, val loss: %.4f" % (true_accuracy, true_loss))
-            elif phase == 2:
-                print("Model stopping early with an accuracy of %.2f and a loss of %.2f" % (true_accuracy, true_loss))
-                exit_early = True
-                break
 
             # add metrics to list to be graphed
             if phase < 2:
