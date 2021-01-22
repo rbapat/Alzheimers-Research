@@ -23,11 +23,15 @@ class TorchLoader(Dataset):
         mat = nib.load(data[0])
         mat = transform.resize(torch.Tensor(mat.get_fdata()), self.data_dim)
 
+        
         # hacky fix to corner case
         if type(data[1]) == type(0.0):
             return mat, torch.Tensor([data[1]])
 
+        print(data[1])
         return mat, torch.Tensor(data[1])
+
+        #return mat, torch.Tensor([data[1][0]]), torch.Tensor(data[1][1])
 
 class BaseParser:
     def __init__(self, data_dim):
@@ -45,6 +49,8 @@ class BaseParser:
                         dataset.append((os.path.join(root, file), score))
 
         random.shuffle(dataset)
+
+        print("Dataset Length:", len(dataset))
 
         if round(sum(splits), 5) != 1.0:
             raise Exception("Dataset splits does not sum to 1")

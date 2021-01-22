@@ -2,10 +2,7 @@
 ADNI/
 
 # ADNI specific information
-adni_data.csv
-ADNIMERGE.csv
-adni_test_data.csv
-freesurfer_dataset.csv
+*.csv
 
 # Model weights
 checkpoints/
@@ -13,6 +10,7 @@ checkpoints/
 
 # class activation map data
 cam/
+*.avi
 
 
 

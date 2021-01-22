@@ -65,7 +65,7 @@ class TransitionBlock(nn.Module):
         return x
 
 class DenseNet(nn.Module):
-    def __init__(self, in_height, in_width, in_depth, out_features):
+    def __init__(self, in_height, in_width, in_depth):
         super(DenseNet, self).__init__()
         self.identifier = 'DenseNet'
         self.dims = (in_depth, in_height, in_width)     
@@ -89,17 +89,22 @@ class DenseNet(nn.Module):
         self.dense3 = DenseBlock(compressed_size, 24, growth_rate)
         self.trans3 = TransitionBlock(growth_rate, theta)
 
-        self._dense4 = DenseBlock(compressed_size, 16, growth_rate)
+        self.dense4 = DenseBlock(compressed_size, 16, growth_rate)
 
-        self._end_pool = nn.AdaptiveAvgPool3d((1,1,1))
+        self.end_pool = nn.AdaptiveAvgPool3d((1,1,1))
         
-        self._drop = nn.Dropout(0.7)
-        self._fc = nn.Linear(growth_rate, out_features)
+        self.rnn = nn.LSTM(12, 64, 1, batch_first=True) # TODO: Possibly Dropout?
+
+        self.fc = nn.Linear(64, 2)
 
         self.softmax = nn.Softmax(dim = 1)
 
     def forward(self, x):
-        x = x.view(-1, 1, *self.dims)
+        # [3, 1, 128, 128, 128]
+        # [timestamp, batchsize, height, width, depth]
+        bs, ts, h, w, d = x.shape
+
+        x = x.view(bs * ts, 1, h, w, d)
 
         x = self.stem(x)
 
@@ -112,16 +117,18 @@ class DenseNet(nn.Module):
         x = self.dense3(x)
         x = self.trans3(x)
 
-        x = self._dense4(x)
+        x = self.dense4(x)
 
-        x = self._end_pool(x)
+        x = self.end_pool(x)
 
-        x = torch.flatten(x, 1)
+        x = x.view(bs, ts, -1)
 
-        x = self._drop(x)
-        x = self._fc(x)
+        x, _ = self.rnn(x)
+
+        x = self.fc(x[:, -1, :])
 
         return x
+
 
     def init_optimizer(self):
         optim =  torch.optim.SGD(self.parameters(), lr = 0.001, momentum = 0.9)

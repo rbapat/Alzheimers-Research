@@ -82,12 +82,12 @@ class DenseNet(nn.Module):
                                     nn.MaxPool3d(kernel_size = 3, stride = 2, padding = 1)
                                 )
 
-        layers = [DenseBlock(2 * growth_rate, channels[0], growth_rate, drop_rate)]
+        layers = [DenseBlock(2 * growth_rate, channels[0], growth_rate, drop_rate)] # 0 
         for idx, channel in enumerate(channels[1:]):
-            layers.append(TransitionBlock(growth_rate, theta, drop_rate))
-            layers.append(DenseBlock(compressed_size, channel, growth_rate, drop_rate))
+            layers.append(TransitionBlock(growth_rate, theta, drop_rate)) # 1 3 5
+            layers.append(DenseBlock(compressed_size, channel, growth_rate, drop_rate)) # 2 4 6
 
-        self.layers = nn.ModuleList(layers)
+        self.model = nn.Sequential(*layers)
 
         self.end_pool = nn.AdaptiveAvgPool3d((1,1,1))
         self.drop = nn.Dropout3d(0.7)
@@ -98,8 +98,7 @@ class DenseNet(nn.Module):
 
         x = self.stem(x)
 
-        for layer in self.layers:
-            x = layer(x)
+        x = self.model(x)
 
         x = self.end_pool(x)
         x = torch.flatten(x, 1)

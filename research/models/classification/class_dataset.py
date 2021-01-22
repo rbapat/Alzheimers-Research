@@ -1,6 +1,7 @@
 from research.datasets.base_dataset import BaseParser
 import pandas as pd
 import numpy as np
+import torch
 
 class DataParser(BaseParser):
     def __init__(self, data_dim, splits = [0.8, 0.2]):
@@ -10,24 +11,19 @@ class DataParser(BaseParser):
         self.ground_truth = self.create_truth_dictionary()
 
         self.create_dataset(splits, "LongRejects_FSL")
+        
 
     def create_truth_dictionary(self):
-        df = pd.read_csv("LongRejects.csv")
+        df = pd.read_csv("scores.csv")
         data_dict = {}
 
         for index, row in df.iterrows():
-            obj = [row["LDELTOTAL"], row["MMSE"], row["CDRSB"], row["mPACCdigit"], row["mPACCtrailsB"]]
-            data_dict[int(row["IMAGEUID"])] = obj
+            if float(row["SCORE"]) > 0.5:
+                data_dict[int(row["IMAGEUID"])] = torch.Tensor([0, 1])
+            else:
+                data_dict[int(row["IMAGEUID"])] = torch.Tensor([1, 0])
 
-        return self.normalize_data_dict(data_dict)
-
-    def normalize_data_dict(self, data_dict):
-        data = [v for v in data_dict.values()]
-        mean, std = np.mean(data, axis = 0), np.std(data, axis = 0)
-
-        for key in data_dict.keys():
-            for i in range(len(data_dict[key])):
-                data_dict[key][i] = (data_dict[key][i] - mean[i]) / std[i]
+            #data_dict[int(row["IMAGEUID"])] = float(row["SCORE"])
 
         return data_dict
 
@@ -38,4 +34,4 @@ class DataParser(BaseParser):
         return data
 
     def get_num_outputs(self):
-        return 5
+        return 2

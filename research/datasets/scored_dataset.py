@@ -9,7 +9,7 @@ class DataParser(BaseParser):
         self.extension = '.nii.gz'
         self.ground_truth = self.create_truth_dictionary()
 
-        self.create_dataset(splits, "LongRejects_FSL")
+        self.create_dataset(splits, "AllData_FSL")
         
 
     def create_truth_dictionary(self):
@@ -22,10 +22,13 @@ class DataParser(BaseParser):
         return data_dict
 
     def create_ground_truth(self, filename):
-        image_id = int(filename[filename.rindex('_') + 2:-len(self.extension)])
-        data = self.ground_truth[image_id]
+        try:
+            image_id = int(filename[filename.rindex('_') + 2:-len(self.extension)])
+            data = self.ground_truth[image_id]
 
-        return data
+            return data
+        except Exception: # probably KeyError
+            return None
 
     def get_num_outputs(self):
         return 1

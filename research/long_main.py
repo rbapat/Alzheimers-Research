@@ -6,13 +6,13 @@ import torch
 import shutil
 import os
 
-from research.datasets.scored_dataset import DataParser
+from research.datasets.long_dataset import DataParser
 from research.util.Grapher import TrainGrapher
-from research.models.modified_densenet import DenseNet
+from research.models.long_densenet import DenseNet
 
 # model hyperparameters
 NUM_EPOCHS = 1000
-BATCH_SIZE = 5
+BATCH_SIZE = 1
 TOLERANCE = (0.1,)
 
 # weight/graphing parameters
@@ -26,7 +26,6 @@ DATA_DIM = (128, 128, 128)
 
 def main():
     dataset = DataParser(DATA_DIM)
-    num_outputs = dataset.get_num_outputs()
 
     # initialize the data loaders needed for training and validation
     train_loader = DataLoader(dataset.get_subset(0), batch_size = BATCH_SIZE, shuffle = True)
@@ -38,14 +37,28 @@ def main():
     losses = grapher.add_lines("Loss", 'upper right', "Train Loss", "Validation Loss")
         
     #model = DenseNet(DATA_DIM, num_outputs, [6, 12, 24, 16], drop_rate = 0.0).cuda()
-    model = DenseNet(*DATA_DIM, num_outputs).cuda()
+    model = DenseNet(*DATA_DIM).cuda()
 
-
-    criterion = nn.MSELoss()
+    criterion = nn.CrossEntropyLoss()
     optimizer, scheduler = model.init_optimizer()
 
     if not os.path.exists('checkpoints'):
         os.mkdir('checkpoints')
+
+    '''
+    with torch.no_grad():
+        ckpt = torch.load('weights.t7')
+        for name, param in ckpt['state_dict'].items():
+            if name not in model.state_dict() or model.state_dict()[name].shape != param.shape:
+                continue
+
+            model.state_dict()[name].copy_(param)
+            model.state_dict()[name].requires_grad = False
+
+            print("Loaded", name)
+
+        print("Pretrained Weights Loaded!")
+    '''
 
     for epoch in range(1, NUM_EPOCHS + 1):
         for phase in range(len(loaders)): # phase: 0 = train, 1 = val, 2 = test
@@ -56,14 +69,17 @@ def main():
 
             for (data, label) in loaders[phase]:
                 # convert data to cuda because model is cuda
-                data, label = data.cuda(), label.float().cuda()
+                data, label = data.cuda(), label.type(torch.LongTensor).cuda()
                 
                 # eval mode changes behavior of dropout and batch norm for validation
                 
                 model.train(phase == 0)
-                preds = model(data)
+                probs = model(data)
 
-                loss = criterion(preds, label)
+                label = torch.argmax(label, dim = 1)
+                preds = torch.argmax(model.softmax(probs), dim = 1)
+
+                loss = criterion(probs, label)
 
                 optimizer.zero_grad()
 
@@ -80,10 +96,7 @@ def main():
                         scheduler.step()
 
                 running_loss += (loss.item() * len(data))
-
-                # maybe abstract this to the dataset?
-                difference = torch.abs(preds - label)
-                running_correct += sum([(difference[:, i] < x).sum().item() for i,x in enumerate(TOLERANCE)]) / float(num_outputs)
+                running_correct += (preds == label).sum().item()
 
             # get metrics over entire dataset
             # need to make sure these calculations are correct
