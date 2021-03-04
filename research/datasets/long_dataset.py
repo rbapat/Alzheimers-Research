@@ -67,7 +67,8 @@ class DataParser:
                 mci_mci.add(scan["PTID"])
 
         im_dict = {}
-        for (root, dirs, files) in os.walk('/home/rohan/Alzheimers-Research/research/ADNI/AllData_FSL'):
+        #for (root, dirs, files) in os.walk('/home/rohan/Alzheimers-Research/research/ADNI/AllData_FSL'):
+        for (root, dirs, files) in os.walk('/home/rohan_bapat/Alzheimers-Research/research/ADNI/AllData_FSL'):
             for file in files:
                 if file[-7:] == '.nii.gz':
                     image_id = int(file[file.rindex('_') + 2:-7])
@@ -96,6 +97,8 @@ class DataParser:
                 if len(triplet) == 3:
                     dataset.append((triplet, 1))
 
+        cvter = len(dataset)
+
         for ptid in mci_mci:
             scans = month_df[month_df["PTID"] == ptid].sort_values(by=['Month'])
             months = scans["Month"].values
@@ -117,6 +120,7 @@ class DataParser:
                 if len(triplet) == 3:
                     dataset.append((triplet, 0))
 
+        print("%d converters, %d nonconverters" % (cvter, len(dataset) - cvter))
         return dataset
             
     def create_dataset(self, splits, data):

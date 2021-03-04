@@ -65,13 +65,10 @@ class TransitionBlock(nn.Module):
         return x
 
 class DenseNet(nn.Module):
-    def __init__(self, in_height, in_width, in_depth):
+    def __init__(self, in_height, in_width, in_depth, channels, growth_rate = 12, theta = 1.0):
         super(DenseNet, self).__init__()
         self.identifier = 'DenseNet'
         self.dims = (in_depth, in_height, in_width)     
-        
-        growth_rate = 12
-        theta = 1.0
 
         compressed_size = int(growth_rate * theta)
 
@@ -80,20 +77,18 @@ class DenseNet(nn.Module):
                                     nn.MaxPool3d(kernel_size = 3, stride = 2, padding = 1)
                                 )
 
-        self.dense1 = DenseBlock(2 * growth_rate, 6, growth_rate)
-        self.trans1 = TransitionBlock(growth_rate, theta)
+      
+        layers = [DenseBlock(2 * growth_rate, channels[0], growth_rate)] # 0 
+        for idx, channel in enumerate(channels[1:]):
+            layers.append(TransitionBlock(growth_rate, theta)) # 1 3 5
+            layers.append(DenseBlock(compressed_size, channel, growth_rate)) # 2 4 6
 
-        self.dense2 = DenseBlock(compressed_size, 12, growth_rate)
-        self.trans2 = TransitionBlock(growth_rate, theta)
+        self.model = nn.Sequential(*layers)
 
-        self.dense3 = DenseBlock(compressed_size, 24, growth_rate)
-        self.trans3 = TransitionBlock(growth_rate, theta)
-
-        self.dense4 = DenseBlock(compressed_size, 16, growth_rate)
 
         self.end_pool = nn.AdaptiveAvgPool3d((1,1,1))
-        
-        self.rnn = nn.LSTM(12, 64, 1, batch_first=True) # TODO: Possibly Dropout?
+        self.drop = nn.Dropout3d(0.7)
+        self.rnn = nn.LSTM(growth_rate, 64, 1, batch_first=True) # TODO: Possibly Dropout?
 
         self.fc = nn.Linear(64, 2)
 
@@ -108,21 +103,13 @@ class DenseNet(nn.Module):
 
         x = self.stem(x)
 
-        x = self.dense1(x)
-        x = self.trans1(x)
-
-        x = self.dense2(x)
-        x = self.trans2(x)
-
-        x = self.dense3(x)
-        x = self.trans3(x)
-
-        x = self.dense4(x)
+        x = self.model(x)
 
         x = self.end_pool(x)
 
         x = x.view(bs, ts, -1)
 
+        x = self.drop(x)
         x, _ = self.rnn(x)
 
         x = self.fc(x[:, -1, :])

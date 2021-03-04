@@ -28,7 +28,6 @@ class TorchLoader(Dataset):
         if type(data[1]) == type(0.0):
             return mat, torch.Tensor([data[1]])
 
-        print(data[1])
         return mat, torch.Tensor(data[1])
 
         #return mat, torch.Tensor([data[1][0]]), torch.Tensor(data[1][1])

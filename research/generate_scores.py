@@ -60,6 +60,8 @@ def KNN(K, data_dict):
 
     for key in data_dict:
         data, new_dx = data_dict[key]
+        #if new_dx == "MCI":
+        #    continue
 
         tmp = []
         for iter_key in data_dict:
@@ -169,7 +171,7 @@ def main():
     dxkeys = ["CNCN", "ADAD", "MCIMCI"]
 
     score_df = concat_df(df, targets, dxkeys)
-    truth_df = create_truth_dictionary(score_df, ["LDELTOTAL", "MMSE", "CDRSB", "mPACCdigit", "mPACCtrailsB"])
+    truth_df = create_truth_dictionary(score_df, ["CDRSB", "LDELTOTAL", "mPACCdigit", "mPACCtrailsB", "MMSE"])
 
     scores = KNN(300, truth_df)
     write_scores(scores, "scores.csv")

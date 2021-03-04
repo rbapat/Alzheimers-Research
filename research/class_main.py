@@ -6,9 +6,9 @@ import torch
 import shutil
 import os
 
-from research.datasets.scored_dataset import DataParser
+from research.datasets.class_dataset import DataParser
 from research.util.Grapher import TrainGrapher
-from research.models.modified_densenet import DenseNet
+from research.models.densenet import DenseNet
 
 # model hyperparameters
 NUM_EPOCHS = 1000
@@ -23,7 +23,6 @@ GRAPH_FREQ = 10
 # data shapes
 DATA_DIM = (128, 128, 128)
 
-
 def main():
     dataset = DataParser(DATA_DIM)
     num_outputs = dataset.get_num_outputs()
@@ -37,15 +36,31 @@ def main():
     accuracy = grapher.add_lines("Accuracy", 'lower left', "Train Accuracy", "Validation Accuracy")
     losses = grapher.add_lines("Loss", 'upper right', "Train Loss", "Validation Loss")
         
-    #model = DenseNet(DATA_DIM, num_outputs, [6, 12, 24, 16], drop_rate = 0.0).cuda()
-    model = DenseNet(*DATA_DIM, num_outputs).cuda()
+    #model = DenseNet(DATA_DIM, num_outputs, [6, 6, 6, 6], growth_rate = 12, theta = 1.0, drop_rate = 0.0).cuda()
+    model = DenseNet(DATA_DIM, num_outputs, [6, 12, 32, 24], growth_rate = 32, theta = 0.5, drop_rate = 0.0).cuda()
 
-
-    criterion = nn.MSELoss()
+    criterion = nn.CrossEntropyLoss()
     optimizer, scheduler = model.init_optimizer()
 
     if not os.path.exists('checkpoints'):
         os.mkdir('checkpoints')
+
+    with torch.no_grad():
+        if os.path.exists('pretrain.t7'):
+            ckpt = torch.load('pretrain.t7')
+
+            for name, param in ckpt['state_dict'].items():
+                if name not in model.state_dict():
+                    continue
+
+                if model.state_dict()[name].shape != param.shape:
+                    print("Failed", name)
+                    continue
+
+                model.state_dict()[name].copy_(param)
+                #model.state_dict()[name].requires_grad = False
+
+            print("Pretrained Weights Loaded!")
 
     for epoch in range(1, NUM_EPOCHS + 1):
         for phase in range(len(loaders)): # phase: 0 = train, 1 = val, 2 = test
@@ -61,9 +76,12 @@ def main():
                 # eval mode changes behavior of dropout and batch norm for validation
                 
                 model.train(phase == 0)
-                preds = model(data)
+                probs = model(data)
 
-                loss = criterion(preds, label)
+                label = torch.argmax(label, dim = 1)
+                preds = torch.argmax(model.softmax(probs), dim = 1)
+
+                loss = criterion(probs, label)
 
                 optimizer.zero_grad()
 
@@ -82,8 +100,10 @@ def main():
                 running_loss += (loss.item() * len(data))
 
                 # maybe abstract this to the dataset?
-                difference = torch.abs(preds - label)
-                running_correct += sum([(difference[:, i] < x).sum().item() for i,x in enumerate(TOLERANCE)]) / float(num_outputs)
+                # difference = torch.abs(preds - label)
+                # running_correct += sum([(difference[:, i] < x).sum().item() for i,x in enumerate(TOLERANCE)]) / float(num_outputs)
+
+                running_correct += (preds == label).sum().item()
 
             # get metrics over entire dataset
             # need to make sure these calculations are correct
@@ -99,6 +119,17 @@ def main():
             if phase < 2:
                 accuracy[phase].append(true_accuracy)
                 losses[phase].append(true_loss)
+
+            if phase == 1 and true_accuracy > 90:
+                state = {
+                    'state_dict': model.state_dict(),
+                    'optimizer': optimizer.state_dict()
+                }
+
+
+                path = os.path.join('checkpoints', '%s_epoch_%d_acc_%2f.t7' % (model.identifier, epoch, true_accuracy))
+                torch.save(state, path)
+
 
         if epoch % GRAPH_FREQ == 0:
             grapher.update() 

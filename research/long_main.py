@@ -37,7 +37,7 @@ def main():
     losses = grapher.add_lines("Loss", 'upper right', "Train Loss", "Validation Loss")
         
     #model = DenseNet(DATA_DIM, num_outputs, [6, 12, 24, 16], drop_rate = 0.0).cuda()
-    model = DenseNet(*DATA_DIM).cuda()
+    model = DenseNet(*DATA_DIM, [6, 12, 48, 32], growth_rate = 32, theta = 0.7).cuda()
 
     criterion = nn.CrossEntropyLoss()
     optimizer, scheduler = model.init_optimizer()
@@ -45,20 +45,19 @@ def main():
     if not os.path.exists('checkpoints'):
         os.mkdir('checkpoints')
 
-    '''
-    with torch.no_grad():
-        ckpt = torch.load('weights.t7')
-        for name, param in ckpt['state_dict'].items():
-            if name not in model.state_dict() or model.state_dict()[name].shape != param.shape:
-                continue
+    if os.path.exists('optimal.t7'):
+        with torch.no_grad():
+            ckpt = torch.load('optimal.t7')
+            for name, param in ckpt['state_dict'].items():
+                if name not in model.state_dict() or model.state_dict()[name].shape != param.shape:
+                    continue
 
-            model.state_dict()[name].copy_(param)
-            model.state_dict()[name].requires_grad = False
+                model.state_dict()[name].copy_(param)
+                #model.state_dict()[name].requires_grad = False
 
-            print("Loaded", name)
+                print("Loaded", name)
 
-        print("Pretrained Weights Loaded!")
-    '''
+            print("Pretrained Weights Loaded!")
 
     for epoch in range(1, NUM_EPOCHS + 1):
         for phase in range(len(loaders)): # phase: 0 = train, 1 = val, 2 = test

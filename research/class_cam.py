@@ -13,7 +13,7 @@ import skimage
 import matplotlib.pyplot as plt
 import os
 
-from research.datasets.scored_dataset import DataParser
+from research.datasets.class_dataset import DataParser
 from research.util.Grapher import TrainGrapher
 from research.models.densenet import DenseNet
 
@@ -30,14 +30,21 @@ def main():
 
     loader = DataLoader(dataset.get_subset(1), batch_size = 1, shuffle = True)
         
-    model = DenseNet(DATA_DIM, num_outputs, [6, 12, 48, 32], growth_rate = 32, theta = 0.5, drop_rate = 0.0).cuda()
+    #model = DenseNet(DATA_DIM, num_outputs, [6, 12, 48, 32], growth_rate = 32, theta = 0.5, drop_rate = 0.0).cuda()
+    model = DenseNet(DATA_DIM, num_outputs, [6, 12, 24, 16], growth_rate = 12, theta = 1.0, drop_rate = 0.0).cuda()
 
-    if os.path.exists('75.t7'):
-        print("Attempting to load weights...")
-        ckpt = torch.load('75.t7')
-        model.load_state_dict(ckpt['state_dict'])
-        print("Loaded Weights!")
+    with torch.no_grad():
+        ckpt = torch.load('optimal.t7')
+        for name, param in ckpt['state_dict'].items():
+            if name not in model.state_dict() or model.state_dict()[name].shape != param.shape:
+                continue
 
+            model.state_dict()[name].copy_(param)
+            model.state_dict()[name].requires_grad = False
+
+            #print("Loaded", name)
+
+        print("Pretrained Weights Loaded!")
 
     criterion = nn.MSELoss()
 
@@ -50,23 +57,34 @@ def main():
     def save_grad(module, grad_input, grad_output):
         gradients.append(grad_input[0].data.cpu().squeeze().numpy())
 
-    model.layers[0].layers[-1].register_backward_hook(save_grad)
-    model.layers[0].layers[-1].register_forward_hook(save_conv)
+    model.model[0].layers[-1].register_backward_hook(save_grad)
+    model.model[0].layers[-1].register_forward_hook(save_conv)
 
     loader = iter(loader)
     data, label = next(loader)
     data, label = data.cuda(), label.float().cuda()
     
     model.train(False)
-    preds = model(data)
+    probs = model(data)
 
+    label = torch.argmax(label, dim = 1)
+    preds = np.argmax(model.softmax(probs).cpu().data.numpy())
+
+    one_hot = np.zeros((1, probs.size()[-1]), dtype = np.float32)
+    one_hot[0][preds.squeeze().item()] = 1
+    one_hot = torch.from_numpy(one_hot).requires_grad_(True).cuda()
+
+    print("Predicted Score:", preds)
+    print("Actual Score:", label[0].item())
+
+    one_hot = torch.sum(one_hot * probs)
+    
+    preds = one_hot
     model.zero_grad()
     preds.backward()
 
     conv_features = features[0]
     grads = gradients[0]
-    
-    print(conv_features.shape, grads.shape)
 
     weights = np.mean(grads, axis = (1,2,3))
 
@@ -127,9 +145,6 @@ def main():
         video.write(cv2.imread(file))
 
     video.release()
-
-    print("Predicted Score:", round(preds[0][0].item(), 4))
-    print("Actual Score:", round(label[0][0].item(), 4))
 
 if __name__ == '__main__':
     main()

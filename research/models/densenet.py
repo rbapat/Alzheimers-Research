@@ -70,9 +70,14 @@ class TransitionBlock(nn.Module):
         return x
 
 class DenseNet(nn.Module):
-    def __init__(self, in_dims, out_features, channels, growth_rate = 12, theta = 1.0, drop_rate = 0.2):
+    def __init__(self, in_dims, out_features, channels, growth_rate, theta, drop_rate):
         super(DenseNet, self).__init__()
+
+        # TODO: Make this cleaner
         self.identifier = 'DenseNet'
+        for param in (channels, growth_rate, theta, drop_rate):
+            self.identifier = self.identifier + '_' + str(param)
+
         self.dims = in_dims
 
         compressed_size = int(growth_rate * theta)
@@ -90,8 +95,10 @@ class DenseNet(nn.Module):
         self.model = nn.Sequential(*layers)
 
         self.end_pool = nn.AdaptiveAvgPool3d((1,1,1))
-        self.drop = nn.Dropout3d(0.7)
         self.fc = nn.Linear(growth_rate, out_features)
+
+        # TODO: Remove This (need to edit class_main/class_cam)
+        self.softmax = nn.Softmax(dim = 1)
 
     def forward(self, x):
         x = x.view(-1, 1, *self.dims)
@@ -102,13 +109,12 @@ class DenseNet(nn.Module):
 
         x = self.end_pool(x)
         x = torch.flatten(x, 1)
-        x = self.drop(x)
         x = self.fc(x)
 
         return x
 
     def init_optimizer(self):
-        optim =  torch.optim.SGD(self.parameters(), lr = 0.001, momentum = 0.9, weight_decay = .001, nesterov = True) #torch.optim.SGD(self.parameters(), lr = 0.01, momentum = 0.90, dampening = 0.0, weight_decay = .001, nesterov = True)
-        scheduler = None #torch.optim.lr_scheduler.StepLR(optim, step_size = 30, gamma = 0.1)
+        optim =  torch.optim.SGD(self.parameters(), lr = 0.01, momentum = 0.9, weight_decay = .001, nesterov = True)
+        scheduler = None
 
         return optim, scheduler
