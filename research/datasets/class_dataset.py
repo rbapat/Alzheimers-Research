@@ -59,4 +59,4 @@ class DataParser(BaseParser):
             return None
 
     def get_num_outputs(self):
-        return 2
+        return 3

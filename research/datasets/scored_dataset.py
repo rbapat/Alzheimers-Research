@@ -11,7 +11,7 @@ class DataParser(BaseParser):
 
         self.create_dataset(splits, "AllData_FSL")
         
-
+    # create mapping from image id to image score
     def create_truth_dictionary(self):
         df = pd.read_csv("scores.csv")
         data_dict = {}
@@ -21,6 +21,7 @@ class DataParser(BaseParser):
 
         return data_dict
 
+    # get image score from the path of a file
     def create_ground_truth(self, filename):
         try:
             image_id = int(filename[filename.rindex('_') + 2:-len(self.extension)])

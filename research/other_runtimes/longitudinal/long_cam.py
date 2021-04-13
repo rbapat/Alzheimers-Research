@@ -13,9 +13,9 @@ import skimage
 import matplotlib.pyplot as plt
 import os
 
-from research.datasets.scored_dataset import DataParser
+from research.datasets.long_dataset import DataParser
 from research.util.Grapher import TrainGrapher
-from research.models.densenet import DenseNet
+from research.models.long_densenet import DenseNet
 
 DATA_DIM = (128, 128, 128)
 
@@ -32,15 +32,15 @@ def main():
         
     model = DenseNet(DATA_DIM, num_outputs, [6, 12, 32, 24], growth_rate = 24, theta = 0.5, drop_rate = 0.0).cuda()
 
-
     with torch.no_grad():
         ckpt = torch.load('optimal.t7')
         for name, param in ckpt['state_dict'].items():
             if name not in model.state_dict():
+                print(name, "not it")
                 continue
 
             if model.state_dict()[name].shape != param.shape:
-                print("Failed", name)
+                print("Failed shape", name)
                 continue
 
             model.state_dict()[name].copy_(param)
@@ -67,29 +67,23 @@ def main():
 
     loader = iter(loader)
     data, label = next(loader)
-    while abs(label[0][0].item() - 0.8) > 0.15:
-        print(".", end="")
-        data, label = next(loader)
-    print()
-
-    data, label = data.cuda(), label.float().cuda()
+    data, label = data.cuda(), label.type(torch.FloatTensor).cuda()
     
-    model.train(False)
+    #model.train(False)
     preds = model(data)
 
     model.zero_grad()
-    preds.backward()
+    preds[0][1].backward()
 
-    print("Predicted Score:", round(preds[0][0].item(), 4))
-    print("Actual Score:", round(label[0][0].item(), 4))
     conv_features = features[0]
     grads = gradients[0]
 
-    weights = np.mean(grads, axis = (1,2,3))
-
-    cam = np.zeros(conv_features.shape[1:], dtype=np.float32)
+    print(grads.shape)
+    weights = np.mean(grads[1], axis = (1,2,3))
+    
+    cam = np.zeros(conv_features.shape[2:], dtype=np.float32)
     for i, w in enumerate(weights):
-        cam += w * conv_features[i, :, :, :]
+        cam += w * conv_features[1, i, :, :, :]
     
     cam = np.maximum(cam, 0)
     cam = cam - np.min(cam)
@@ -97,22 +91,21 @@ def main():
     cam = np.uint8(255 * cam)
     cam = skimage.transform.resize(cam, (128, 128, 128), anti_aliasing = True, preserve_range = True, mode = 'edge')
 
-    in_mat = skimage.transform.resize(data[0].cpu(), (128, 128, 128), anti_aliasing = True, preserve_range = True, mode = 'edge')
+    in_mat = skimage.transform.resize(data[0][1].cpu(), (128, 128, 128), anti_aliasing = True, preserve_range = True, mode = 'edge')
 
     if not os.path.exists('cam'):
         os.makedirs('cam')
 
     names = ["sagittal", "coronal", "axial"]
     paths = []
-    fig, axes = plt.subplots(2, len(in_mat.shape))
+    fig, axes = plt.subplots(1, len(in_mat.shape))
     for i in range(in_mat.shape[1]):
 
         for j in range(len(in_mat.shape)):
-            for k in range(2):
-                axes[k][j].cla()
+            axes[j].cla()
 
-                axes[k][j].axis('off')
-                axes[k][j].tick_params(axis='both', left='off', top='off', right='off', bottom='off', labelleft='off', labeltop='off', labelright='off', labelbottom='off')
+            axes[j].axis('off')
+            axes[j].tick_params(axis='both', left='off', top='off', right='off', bottom='off', labelleft='off', labeltop='off', labelright='off', labelbottom='off')
 
 
         subscans = [
@@ -128,11 +121,10 @@ def main():
                     ]
 
         for j in range(len(in_mat.shape)):            
-            axes[0][j].imshow(subscans[j], cmap = "gray")
+            axes[j].set_title(names[j])
+            axes[j].imshow(subscans[j])
+            axes[j].imshow(clip_scans[j], cmap='jet', alpha=0.5)
 
-            axes[1][j].set_title(names[j])
-            axes[1][j].imshow(subscans[j])
-            axes[1][j].imshow(clip_scans[j], cmap='jet', alpha=0.5)
 
         #plt.pause(0.0001)
 
@@ -141,14 +133,15 @@ def main():
         paths.append(filename)
 
     height, width, depth = cv2.imread(paths[0]).shape
-    path = os.path.join(os.getcwd(), 'cam', 'class activation map.avi')
     video = cv2.VideoWriter(os.path.join('cam', 'class activation map.avi'), cv2.VideoWriter_fourcc(*'XVID'), 30, (width, height))
 
     for file in paths:
         video.write(cv2.imread(file))
 
     video.release()
-    print(path)
+
+    print("Predicted Score:", round(preds[0][1].item(), 4))
+    print("Actual Score:", round(label[0][1].item(), 4))
 
 if __name__ == '__main__':
     main()

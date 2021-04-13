@@ -2,24 +2,24 @@ from torch.utils.data import DataLoader
 import torch.optim as optim
 import numpy as np
 import multiprocessing
+from datetime import datetime
 import torch.nn as nn
 import torch
 import shutil
 import os
 
-from research.datasets.scored_dataset import DataParser
+from research.datasets.long_dataset import DataParser
 from research.util.Grapher import TrainGrapher
-from research.models.densenet import DenseNet
-from research.models.resnet import ResNet
+from research.models.long_densenet import DenseNet
 
 # model hyperparameters
 NUM_EPOCHS = 1000
-BATCH_SIZE = 5
+BATCH_SIZE = 4
 TOLERANCE = (0.1,)
 
 # weight/graphing parameters
 GRAPH_METRICS = False
-SAVE_FREQ = 5
+SAVE_FREQ = 1
 GRAPH_FREQ = 10
 
 # data shapes
@@ -41,7 +41,7 @@ def save_model(model, optimizer, epoch):
     path = os.path.join('checkpoints', '%s_epoch_%d.t7' % (model.identifier, epoch))
     torch.save(state, path)
 
-def load_weights(weight_file, requires_grad = None):
+def load_weights(model, weight_file, requires_grad = None):
     with torch.no_grad():
         if not os.path.exists(weight_file):
             print("Weight file %s not found" % weight_file)
@@ -76,8 +76,8 @@ def main():
     accuracy = grapher.add_lines("Accuracy", 'lower left', "Train Accuracy", "Validation Accuracy")
     losses = grapher.add_lines("Loss", 'upper right', "Train Loss", "Validation Loss")
         
-    model = DenseNet(DATA_DIM, num_outputs, [12, 24, 16, 6], growth_rate = 12, theta = 1.0, drop_rate = 0.0).cuda()
-    #model = ResNet(DATA_DIM, num_outputs, [2, 2, 2, 2], True).cuda()
+    model = DenseNet(DATA_DIM, num_outputs, [6, 12, 64, 48], growth_rate = 12, theta = 0.5, drop_rate = 0.0).cuda()
+    #model = ResNet(DATA_DIM, num_outputs, [3, 4, 6, 3], True).cuda()
 
     criterion = nn.MSELoss()
     optimizer, scheduler = model.init_optimizer()
@@ -85,7 +85,7 @@ def main():
     if not os.path.exists('checkpoints'):
         os.mkdir('checkpoints')
 
-    load_weights('pretrain.t7')
+    load_weights(model, 'pretrain.t7')
 
     for epoch in range(1, NUM_EPOCHS + 1):
         x_val, y_val = [], []
@@ -95,16 +95,18 @@ def main():
             if phase == 2:
                 continue
 
-            for (data, label) in loaders[phase]:
+            for idx, (data, label) in enumerate(loaders[phase]):
                 # convert data to cuda because model is cuda
-                data, label = data.cuda(), label.float().cuda()
+                data, label = data.cuda(), label.type(torch.FloatTensor).cuda()
                 
                 # eval mode changes behavior of dropout and batch norm for validation
                 model.train(phase == 0)
 
                 preds = model(data)
+                #print(preds)
+                #print(label)
+                #print()
                 loss = criterion(preds, label)
-
                 optimizer.zero_grad()
 
                 # backprop if in training phase
@@ -120,8 +122,8 @@ def main():
                         scheduler.step()
                 elif phase == 1:
                     for y_hat, y in zip(preds, label):
-                        x_val.append(y[0].item())
-                        y_val.append(y_hat[0].item())
+                        x_val.append(y[1].item())
+                        y_val.append(y_hat[1].item())
 
                 running_loss += (loss.item() * len(data))
 
@@ -135,6 +137,7 @@ def main():
             true_loss = running_loss / len(dataset.get_subset(phase))
 
             if phase == 0:
+                print("[%s] " % datetime.now().strftime("%H:%M:%S"), end="")
                 print("Epoch %d/%d, train accuracy: %.2f, train loss: %.4f" % (epoch, NUM_EPOCHS, true_accuracy, true_loss), end ="") 
             elif phase == 1:
                 r_sq = get_rsquared(x_val, y_val)

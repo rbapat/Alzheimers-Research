@@ -27,7 +27,7 @@ class DenseUnit(nn.Module):
 
     def forward(self, x):
         x = self.bottleneck(x)
-        x = self.drop(x)
+        #x = self.drop(x)
         x = self.conv2(x)
         x = self.drop(x)
 
@@ -58,11 +58,13 @@ class TransitionBlock(nn.Module):
     def __init__(self, in_features, theta, drop_rate):
         super(TransitionBlock, self).__init__()
 
+        self.norm = nn.BatchNorm3d(in_features)
         self.conv = Conv3d(in_features, int(in_features * theta), kernel_size = 1, stride = 1, padding = 0)
         self.drop = nn.Dropout3d(drop_rate)
         self.pool = nn.AvgPool3d(kernel_size = 2, stride = 2, padding = 0)
 
     def forward(self, x):
+        x = self.norm(x)
         x = self.conv(x)
         x = self.drop(x)
         x = self.pool(x)
@@ -75,8 +77,8 @@ class DenseNet(nn.Module):
 
         # TODO: Make this cleaner
         self.identifier = 'DenseNet'
-        for param in (channels, growth_rate, theta, drop_rate):
-            self.identifier = self.identifier + '_' + str(param)
+        #for param in (channels, growth_rate, theta, drop_rate):
+        #    self.identifier = self.identifier + '_' + str(param)
 
         self.dims = in_dims
 
@@ -96,12 +98,29 @@ class DenseNet(nn.Module):
 
         self.end_pool = nn.AdaptiveAvgPool3d((1,1,1))
         self.fc = nn.Linear(growth_rate, out_features)
+        self.drop = nn.Dropout(0.7)
 
         # TODO: Remove This (need to edit class_main/class_cam)
         self.softmax = nn.Softmax(dim = 1)
+        
+        
+        '''  
+        for m in self.modules():
+            if isinstance(m, nn.Conv3d):
+                n = m.kernel_size[0] * m.kernel_size[1] * m.kernel_size[2] * m.out_channels
+                m.weight.data.normal_(0, math.sqrt(2. / n))
+            elif isinstance(m, nn.BatchNorm3d):
+                m.weight.data.fill_(1)
+                m.bias.data.zero_()
+            elif isinstance(m, nn.Linear):
+                m.bias.data.zero_()
+        '''
+        
+        
 
     def forward(self, x):
-        x = x.view(-1, 1, *self.dims)
+        x = x.view(-1, 1,  *self.dims)
+        #x = x.view(-1, *x.shape)
 
         x = self.stem(x)
 
@@ -109,12 +128,16 @@ class DenseNet(nn.Module):
 
         x = self.end_pool(x)
         x = torch.flatten(x, 1)
+        #x = self.drop(x)
         x = self.fc(x)
-
+        
+        #x = torch.sigmoid(x)
         return x
 
     def init_optimizer(self):
-        optim =  torch.optim.SGD(self.parameters(), lr = 0.01, momentum = 0.9, weight_decay = .001, nesterov = True)
+        optim = torch.optim.SGD(self.parameters(), lr = 0.001, momentum = 0.9, weight_decay = .001, nesterov = True)
+        #optim = torch.optim.Adam(self.parameters(), lr = 0.01);
+        #optim = torch.optim.RMSprop(self.parameters(), lr = 0.001, momentum = 0.9)
         scheduler = None
 
         return optim, scheduler

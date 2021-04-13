@@ -30,17 +30,17 @@ def main():
 
     loader = DataLoader(dataset.get_subset(1), batch_size = 1, shuffle = True)
         
-    model = DenseNet(DATA_DIM, num_outputs, [6, 12, 24, 16], growth_rate = 12, theta = 1.0, drop_rate = 0.0).cuda()
-
+    model = DenseNet(DATA_DIM, num_outputs, [6, 12, 32, 24], growth_rate = 24, theta = 0.5, drop_rate = 0.0).cuda()
 
     with torch.no_grad():
         ckpt = torch.load('optimal.t7')
         for name, param in ckpt['state_dict'].items():
             if name not in model.state_dict():
+                print(name, "not it")
                 continue
 
             if model.state_dict()[name].shape != param.shape:
-                print("Failed", name)
+                print("Failed shape", name)
                 continue
 
             model.state_dict()[name].copy_(param)
@@ -97,15 +97,14 @@ def main():
 
     names = ["sagittal", "coronal", "axial"]
     paths = []
-    fig, axes = plt.subplots(2, len(in_mat.shape))
+    fig, axes = plt.subplots(1, len(in_mat.shape))
     for i in range(in_mat.shape[1]):
 
         for j in range(len(in_mat.shape)):
-            for k in range(2):
-                axes[k][j].cla()
+            axes[j].cla()
 
-                axes[k][j].axis('off')
-                axes[k][j].tick_params(axis='both', left='off', top='off', right='off', bottom='off', labelleft='off', labeltop='off', labelright='off', labelbottom='off')
+            axes[j].axis('off')
+            axes[j].tick_params(axis='both', left='off', top='off', right='off', bottom='off', labelleft='off', labeltop='off', labelright='off', labelbottom='off')
 
 
         subscans = [
@@ -121,11 +120,9 @@ def main():
                     ]
 
         for j in range(len(in_mat.shape)):            
-            axes[0][j].imshow(subscans[j], cmap = "gray")
-
-            axes[1][j].set_title(names[j])
-            axes[1][j].imshow(subscans[j])
-            axes[1][j].imshow(clip_scans[j], cmap='jet', alpha=0.5)
+            axes[j].set_title(names[j])
+            axes[j].imshow(subscans[j])
+            axes[j].imshow(clip_scans[j], cmap='jet', alpha=0.5)
 
         #plt.pause(0.0001)
 

@@ -28,7 +28,7 @@ def concat_df(df, targets, dxkeys):
     frames = []
     for target, key in zip(targets, dxkeys):
         dx_df = df[df["PTID"].isin(target)]
-        dx_bl = dx_df[dx_df["VISCODE"] == 'bl']
+        dx_bl = dx_df[dx_df["Month"].isin([0])]
         #dx_bl["DXKEY"] = [key] * len(dx_bl)
         frames.append(dx_bl)
 
@@ -60,8 +60,6 @@ def KNN(K, data_dict):
 
     for key in data_dict:
         data, new_dx = data_dict[key]
-        #if new_dx == "MCI":
-        #    continue
 
         tmp = []
         for iter_key in data_dict:
@@ -161,17 +159,20 @@ def write_scores(scores, filename):
             writer.writerow(data)
 
 def main():
-    keys = ["VISCODE", "PTID", "IMAGEUID", "LDELTOTAL", "MMSE", "CDRSB", "mPACCdigit", "mPACCtrailsB", "DX"]
+    keys = ["VISCODE", "PTID", "IMAGEUID", "LDELTOTAL", "MMSE", "CDRSB", "mPACCdigit", "mPACCtrailsB", "DX", "AGE"]
     df = pd.read_csv('ADNIMERGE.csv', low_memory = False).dropna(subset = keys) 
 
     cn_mci, mci_ad, cn_cn, mci_mci, ad_ad = get_class_sets(df)
 
-    df = df[keys]
+    #df = df[keys]
+    #targets = [cn_cn, ad_ad, mci_mci, cn_mci, mci_ad]
+    #dxkeys = ["CNCN", "ADAD", "MCIMCI", "CN_MCI", "MCI_AD"]
+
     targets = [cn_cn, ad_ad, mci_mci]
     dxkeys = ["CNCN", "ADAD", "MCIMCI"]
 
     score_df = concat_df(df, targets, dxkeys)
-    truth_df = create_truth_dictionary(score_df, ["CDRSB", "LDELTOTAL", "mPACCdigit", "mPACCtrailsB", "MMSE"])
+    truth_df = create_truth_dictionary(score_df, ["CDRSB", "LDELTOTAL", "mPACCdigit", "mPACCtrailsB", "MMSE", "AGE"])
 
     scores = KNN(300, truth_df)
     write_scores(scores, "scores.csv")

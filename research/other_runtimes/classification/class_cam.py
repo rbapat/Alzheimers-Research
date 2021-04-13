@@ -31,7 +31,7 @@ def main():
     loader = DataLoader(dataset.get_subset(1), batch_size = 1, shuffle = True)
         
     #model = DenseNet(DATA_DIM, num_outputs, [6, 12, 48, 32], growth_rate = 32, theta = 0.5, drop_rate = 0.0).cuda()
-    model = DenseNet(DATA_DIM, num_outputs, [6, 12, 24, 16], growth_rate = 12, theta = 1.0, drop_rate = 0.0).cuda()
+    model = DenseNet(DATA_DIM, num_outputs, [6, 12, 32, 24], growth_rate = 24, theta = 0.5, drop_rate = 0.0).cuda()
 
     with torch.no_grad():
         ckpt = torch.load('optimal.t7')

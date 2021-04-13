@@ -17,28 +17,32 @@ class TorchLoader(Dataset):
         return len(self.dataset)
 
     def __getitem__(self, idx):
+        #print(self.dataset)
         data = self.dataset[idx]
+        #print(os.path.join(os.getcwd(), data[0]))
         
         # scans are loaded dynamically because I cant fit the entire dataset in RAM
         mat = nib.load(data[0])
+        #mat = torch.Tensor(mat.get_fdata())
         mat = transform.resize(torch.Tensor(mat.get_fdata()), self.data_dim)
 
         
         # hacky fix to corner case
-        if type(data[1]) == type(0.0):
-            return mat, torch.Tensor([data[1]])
+        #print("####", idx)
+        return mat, torch.Tensor([float(data[1])])
 
-        return mat, torch.Tensor(data[1])
-
-        #return mat, torch.Tensor([data[1][0]]), torch.Tensor(data[1][1])
+        #return mat, torch.Tensor(int(data[1]))
 
 class BaseParser:
     def __init__(self, data_dim):
         self.data_dim = data_dim
         self.subsets = []
 
+    # create the dataset splits and shuffle them
     def create_dataset(self, splits, directory, extension = ".nii.gz"):
         dataset = []
+
+        # walk all files in the dataset, and store the path and score
         for (root, dirs, files) in os.walk(os.path.join('ADNI', directory)):
             for file in files:
                 if file[-len(extension):] == extension:
@@ -47,6 +51,7 @@ class BaseParser:
                     if score is not None:
                         dataset.append((os.path.join(root, file), score))
 
+        random.seed(263)
         random.shuffle(dataset)
 
         print("Dataset Length:", len(dataset))
@@ -62,14 +67,20 @@ class BaseParser:
             maxIdx += chunk
 
             subset = dataset[minIdx:maxIdx]
+
+            random.seed(263)
             random.shuffle(subset)
 
-            self.subsets.append(TorchLoader(subset, self.data_dim))
+            self.subsets.append(TorchLoader(np.array(subset), self.data_dim))
 
             minIdx += chunk
+        #self.subsets = np.array(self.subsets)
 
     def get_subset(self, idx):
         return self.subsets[idx]
+
+    def get_subset_array(self, idx):
+        return self.subsets[idx].dataset
 
     def get_subset_length(self, idx):
         return len(self.subsets[idx])
