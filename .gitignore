@@ -2,10 +2,8 @@
 ADNI/
 
 # ADNI specific information
-*.csv
 
 # Model weights
-checkpoints/
 *.t7
 
 # class activation map data
