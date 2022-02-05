@@ -1,23 +1,14 @@
 # Alzheimers-Research 
 
-Predicting diagnosis of Alzheimer's Disease using Brain MRI scans 
+Predicting conversion from MCI (mild cognitive impairment) to Dementia using multiple timepoints and eventually both imaging and non-imaging data.
 
-## Installing Package (Mandatory)
-- run `pip3 install -e .` from `Alzheimers-Research/` to install the codebase as a package
+I haven't included any of the actual MRI scans here, this is just the code I'm using.
 
-### File Structure
+### Relevant Files
 
-- `research/regr_kfold.py`,`research/val_kfold.py` : Main driver for training and evaluating the current model. `regr_kfold` will train the given model and `val_kfold` will print out the predictions, labels, and classes from the test dataset
-- `research/generate_scores.py`: Uses `ADNIMERGE.csv` to generate all of the scores in the dataset with the weighted KNN algorithm
-- `research/regr_cam.py`: Generates the class activation mapping of the specified network on an input instance for the regression task
-- `research/other_runtimes/`: The main code I used to evaluate other types of models, backed up in case I need it
-- `research/datasets/`: Dataset parsers
-	- `research/datasets/base_dataset.py`: abstract class that other datasets inherit, implements data splitting
-	- `research/datasets/scored_dataset.py`: main dataset for parsing the regression data (scores)
-	- `research/datasets/class_dataset.py`: main dataset for parsing the classification data
-- `research/models/`: Directory for models being evaluated
-  - `research/models/densenet`: DenseNet implementation being used
-- `research/util/`: Directory for different helper classes and smaller scripts
-  - `research/util/graph_data`: Graphs the correlation and errors of lists of predicted values with labels
-  - `research/util/Grapher`: old class used to graph some data while  training
-  - `research/util/preprocess`: script to spawn multiple processes and use FSL to preprocess a given datase
+- `classification.py` trains the neural network on the basic AD/NC classification task
+- `longitudinal.py` trains the network on the longitudinal conversion tasks, it's still a work in progress
+- `models.py` contains the implementation of the neural network model I'm using (DenseNet), and the LSTM
+- `dataset.py` handles all the the data parsing before feeding it into the neural network, and it uses `dataset_helper.py` internally to generate the list of patients to use
+- `preprocess.py` takes in a directory and preprocesses (skull strips and registers) all of the .nii scans found
+- `ADNIMERGE.csv` is the non-imaging data downloaded from ADNI, `MNI152_T1_1mm.nii.gz` is the standard 1mm template that I'm registering to
