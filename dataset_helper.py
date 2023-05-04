@@ -23,7 +23,7 @@ def get_volume_paths(dataset_path):
 def get_df(dataset_path, clin_vars):
     volume_dict = get_volume_paths(dataset_path)
 
-    subs = ['PTID', 'IMAGEUID', 'DX', 'DX_bl', *clin_vars]
+    subs = ['PTID', 'IMAGEUID', 'DX', 'DX_bl', 'Month', *clin_vars]
     df = pd.read_csv('ADNIMERGE.csv', low_memory = False).dropna(subset = subs)[subs]
     df = df[df['IMAGEUID'].isin(volume_dict.keys())]
 

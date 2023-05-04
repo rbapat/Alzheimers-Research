@@ -1,4 +1,5 @@
 from torch.utils.data import DataLoader, Dataset
+from sklearn.model_selection import train_test_split, StratifiedKFold
 import nibabel as nib
 import pandas as pd
 import numpy as np
@@ -8,23 +9,23 @@ import os
 
 from dataset_helper import create_class_dict
 
-class SingleTPLoader(Dataset):
-    def __init__(self, dataset, c):
-        self.dataset = dataset
+class LongitudinalDataset(Dataset):
+    def __init__(self, vols, cvs, dxs):
+        self.vols = vols
+        self.cvs = cvs
+        self.dxs = dxs
 
     def __len__(self):
-        return len(self.dataset)
+        return len(self.vols)
 
     def __getitem__(self, idx):
-        path, clin_vars, dx = self.dataset[idx]
+        if torch.is_tensor(idx):
+            idx = idx.tolist()
 
-        mat = nib.load(path).get_fdata()
-        mat = (mat - mat.min()) / (mat.max() - mat.min()) # min-max normalization
+        return self.vols[idx], self.cvs[idx], self.dxs[idx]
 
-        return torch.Tensor(mat), torch.Tensor(clin_vars), torch.LongTensor([dx])
-
-class MultiTPPathLoader(Dataset):
-    def __init__(self, dataset, augment):
+class LongitudinalPathDataset(Dataset):
+    def __init__(self, dataset):
         self.dataset = dataset
 
     def __len__(self):
@@ -35,98 +36,51 @@ class MultiTPPathLoader(Dataset):
 
         return volume_paths, torch.Tensor(clin_vars), torch.LongTensor([dx])
 
-class MultiTPLoader(Dataset):
-    def __init__(self, dataset, c):
-        self.c = c
-
-        if c.LOAD_PATHS:
-            self.dataset = dataset
-        else:
-            self.dataset = []
-            for volume_paths, clin_vars, dx in dataset:
-                # convert the .nii path to the .npy path I saved
-                npy_paths = [path.replace(c.DATASET_PATH, c.EMBEDDING_PATH).replace('.nii', '.npy') for path in volume_paths]
-
-                # make sure all the files exist
-                if False in [os.path.exists(path) for path in npy_paths]:
-                    raise RuntimeError("Please make sure to create the embeddings first.")
-
-                # read .npy data and store it with clinical variables and final diagnoses
-                # since the .npy data is much smaller than the .nii scan, I can just store the entire dataset in GPU memory, which makes this run much faster
-                volumes = torch.Tensor(np.array([np.load(path).squeeze() for path in npy_paths]))
-                self.dataset.append((volumes.cuda(), torch.Tensor(clin_vars).cuda(), torch.LongTensor([dx]).cuda()))
+class DatasetWrapper(Dataset):
+    def __init__(self, idxList, origDataset):
+        self.idxList = idxList;
+        self.dataset = origDataset
 
     def __len__(self):
-        return len(self.dataset)
+        return len(self.idxList)
 
     def __getitem__(self, idx):
-        if self.c.LOAD_PATHS:
-            volume_paths, clin_vars, dx = self.dataset[idx]
+        if torch.is_tensor(idx):
+            idx = idx.tolist()
 
-            return volume_paths, torch.Tensor(clin_vars), torch.LongTensor([dx])
-        else:
-            return self.dataset[idx]
+        return self.dataset[self.idxList[idx]]
 
-# Main class to handle parsing the entire dataset and creating the specified data loaders
 class DataParser:
-    def __init__(self, c):
+    def __init__(self, settings):
+        paths, df, type_dict = create_class_dict(settings.DATASET_PATH, settings.CLIN_VARS, settings.VISIT_DELTA, settings.NUM_VISITS)
+        dataset = self.build_longitudinal_dataset(df, type_dict, paths, settings.CLIN_VARS)
 
-        # get all patients that convert from MCI to AD with the following clin vars, 3 timepoints 6 months apart
-        
-        paths, df, type_dict = create_class_dict(c.DATASET_PATH, c.CLIN_VARS, c.VISIT_DELTA, c.NUM_VISITS)
-        if c.OPERATION & c.SINGLE_TIMEPOINT:
-            dataset = self.create_single_tp_loader(df, type_dict, paths, c)
-            dataset_loader = SingleTPLoader
-        elif c.OPERATION & c.LONGITUDINAL:
-            dataset = self.create_multi_tp_loader(df, type_dict, paths, c)
-            dataset_loader = MultiTPLoader
+        if settings.OUTER_SPLIT == 1:
+            self.outer_skf = None
         else:
-            raise RuntimeError(f"Unknown operation: {c.OPERATION}")
+            self.outer_skf = StratifiedKFold(n_splits = settings.OUTER_SPLIT, shuffle = True)
+        self.inner_skf = StratifiedKFold(n_splits = settings.INNER_SPLIT, shuffle = True)
+        self.train_idx, self.test_idx, self.train_label = self.split_dataset(dataset)
+        self.dataset = self.load_data(settings, dataset)
+        self.settings = settings
 
-        self.loaders, self.lengths = self.create_dataset(dataset, dataset_loader, c)
+        self.total_length = len(dataset)
+        self.train_length = len(self.train_idx)
+        self.test_length = len(self.test_idx)
 
-    def create_single_tp_loader(self, df, type_dict, paths, c):
-        gts = ['CN', 'Dementia', 'MCI']
-        selected, data = [], []
-        
-        counter = [0, 0, 0]
-        for pt_key in type_dict:
-            val, _ = type_dict[pt_key]
-            if not val.startswith('CLASSIFICATION_'):
-                continue
+        print("Dataset created!")
+        print(f"Total size: {self.total_length}, split into train[{self.train_length}] and test[{self.test_length}]")
 
-            pt_df = df[df["PTID"] == pt_key]
-            candidates = [pt_df[pt_df["DX"] == dx] for dx in ['Dementia', 'MCI', 'CN']]
-            
-            # select one of the timepoints this patient has; prioritize dementia, then MCI, then normal diagnosis
-            for cand in candidates:
-                if len(cand) > 0:
-                    selected.append(cand[["DX", "IMAGEUID"]].values[0])
-                    counter[gts.index(selected[-1][0])] += 1
-                    data.append(cand[c.CLIN_VARS].values[0])
-                    break
-        
-        # normalize each clinical variable to have zero mean and unit variance
-        data = np.array(data)
-        mean, std = np.mean(data, axis = 0), np.std(data, axis = 0)
-        data = np.apply_along_axis(lambda row: (row - mean) / std, 1, data)
+        if settings.OUTER_SPLIT == 1:
+            for fold_idx, (train_set, val_set) in enumerate(self.cross_validation_set()):
+                print(f"Fold {fold_idx} consists of train[{len(train_set.dataset)}] and val[{len(val_set.dataset)}]")
+        else:
+            for outer_fold_idx, (outer_train_split, test_set) in enumerate(self.cross_validation_set()):
+                print(f"Outer fold {outer_fold_idx} consists of test[{len(test_set.dataset)}]")
+                for inner_fold_idx, (train_set, val_set) in enumerate(self.cross_validation_set(outer_train_split)):
+                    print(f"Inner fold {inner_fold_idx} consists of train[{len(train_set.dataset)}] and val[{len(val_set.dataset)}]")
 
-        # A little hacky, but makes sure each group has the same number of patients in the created dataset (omits extra patients)
-        dx_cap = c.DX_CAP
-        counter = [min(counter[:dx_cap])] * 3
-        
-        # Create the actual dataset, omitting patients with MCI if dx_cap == 2 and making sure there are the same number of patients with AD/NC/MCI
-        result = []
-        for (dx, image_id), data_row in zip(selected, data):
-            dx_idx = gts.index(dx)
-
-            if dx_idx < dx_cap and counter[dx_idx] > 0:
-                result.append((paths[int(image_id)], data_row, dx_idx))
-                counter[dx_idx] -= 1
-
-        return result
-
-    def create_multi_tp_loader(self, df, type_dict, paths, c):
+    def build_longitudinal_dataset(self, df, type_dict, paths, clin_vars):
         selected, data = [], []
         seq_len = 3
         for pt_key in type_dict:
@@ -141,7 +95,7 @@ class DataParser:
             dx = ['NON_CONVERTER', 'CONVERTER'].index(val)
 
             selected.append((rows["IMAGEUID"].values, dx))
-            for v in rows[c.CLIN_VARS].values:
+            for v in rows[clin_vars].values:
                 data.append(v)
 
         # normalize each clinical variable to have zero mean and unit variance
@@ -150,36 +104,100 @@ class DataParser:
         data = np.apply_along_axis(lambda row: (row - mean) / std, 1, data)
 
         # Create the actual dataset
-        result = []
+        dataset = []
         for idx, (imids, dx) in enumerate(selected):
             volume_paths = [paths[int(image_id)] for image_id in imids]
-            result.append((volume_paths, data[seq_len*idx:seq_len*idx+seq_len], dx))
+            dataset.append((volume_paths, data[seq_len*idx:seq_len*idx+seq_len], dx))
 
-        return result
+        return dataset
 
-    # Shuffle the dataset (deterministic because of random.seed earlier), split it into training and validation subsets, and create a pytorch DataLoader
-    def create_dataset(self, dataset, loader_class, c):
+    def split_dataset(self, dataset):
         print(f"Processing dataset length {len(dataset)}")
         random.shuffle(dataset)
 
-        min_idx, max_idx = 0, 0
-        subsets, lengths, real_lens = [], [], []
+        # get list of indices, and list of ground truth
+        X = list(range(len(dataset)))
+        y = [item[2] for item in dataset]
 
-        for split_ratio in c.SPLITS:
-            chunk = int(len(dataset) * split_ratio)
+        # split into train indices, test indices, train gt, test gt
+        X_train_idx, X_test_idx, y_train, y_test = train_test_split(X, y, test_size = 0.2, stratify = y)
+        return np.array(X), np.array(X_test_idx), np.array(y)
+        return np.array(X_train_idx), np.array(X_test_idx), np.array(y_train)
 
-            max_idx += chunk
-            loader = loader_class(dataset[min_idx:max_idx], c)
-            subsets.append(DataLoader(loader, batch_size = c.BATCH_SIZE, shuffle = True))
-            lengths.append(max_idx - min_idx)
-            real_lens.append(len(loader.dataset))
-            min_idx += chunk
+    def load_data(self, settings, dataset):
+        if settings.LOAD_PATHS:
+            return LongitudinalPathDataset(dataset)
 
-        print("Created the following subsets:")
-        for idx, sub in enumerate(subsets):
-            print(f"{idx}:\t{lengths[idx]} (augmented to {real_lens[idx]})")
-        print()
+        processed_data = []
+        for volume_paths, clin_vars, dx in dataset:
+            npy_paths = [path.replace(settings.DATASET_PATH, settings.EMBEDDING_PATH).replace('.nii', '.npy') for path in volume_paths]
 
-        return subsets, real_lens
+            # make sure all the files exist
+            if False in [os.path.exists(path) for path in npy_paths]:
+                raise RuntimeError("Please make sure to create the embeddings first.")
+
+            # read .npy data and store it with clinical variables and final diagnoses
+            # since the .npy data is much smaller than the .nii scan, I can just store the entire dataset in GPU memory, which makes this run much faster
+            volumes = torch.Tensor(np.array([np.load(path).squeeze() for path in npy_paths]))
+            processed_data.append((volumes.cuda(), torch.Tensor(clin_vars).cuda(), dx))
+
+        embedding_shape = tuple(processed_data[0][0].shape)
+        all_volumes = torch.zeros((len(processed_data), *embedding_shape), device=torch.device('cuda'))
+        all_clinvars = torch.zeros((len(processed_data), 3, len(settings.CLIN_VARS)), device=torch.device('cuda'))
+        all_dxs = torch.zeros((len(processed_data)), device=torch.device('cuda')).type(torch.cuda.LongTensor)
+
+        for i, (mat, cv, dx) in enumerate(processed_data):
+            all_volumes[i, :] = mat
+            all_clinvars[i, :] = cv
+            all_dxs[i] = dx
+
+        return LongitudinalDataset(all_volumes, all_clinvars, all_dxs)
+
+    def generate_batch(self, idx_list):
+        for i in range(0, len(idx_list), self.settings.BATCH_SIZE):
+            batch_vols = self.vols[i : i + self.settings.BATCH_SIZE]
+            batch_cvs = self.cvs[i : i + self.settings.BATCH_SIZE]
+            batch_dxs = self.dxs[i : i + self.settings.BATCH_SIZE]
+
+            yield batch_vols, batch_cvs, batch_dxs
+
+    def full_training_set(self, idx = None):
+        if idx is None:
+            idx = self.train_idx
+
+        return DataLoader(DatasetWrapper(idx, self.dataset), batch_size = self.settings.BATCH_SIZE, shuffle = False, num_workers = 0)
+
+    def full_testing_set(self, idx = None):
+        if idx is None:
+            idx = self.test_idx
+
+        return DataLoader(DatasetWrapper(idx, self.dataset), batch_size = self.settings.BATCH_SIZE, shuffle = False, num_workers = 0)
+
+    def cross_validation_set(self, index_split = None):
+        '''
+        for train_index, val_index in self.skf.split(self.train_idx, self.train_label):
+            train_set = DataLoader(DatasetWrapper(train_index, self.dataset), batch_size = self.settings.BATCH_SIZE, shuffle = False, num_workers = 0)
+            val_set = DataLoader(DatasetWrapper(val_index, self.dataset), batch_size = self.settings.BATCH_SIZE, shuffle = False, num_workers = 0)
+            yield train_set, val_set
+        '''
+        if self.settings.OUTER_SPLIT == 1:
+            index_split = [i for i in range(len(self.train_idx))]
+
+        if index_split is None and self.outer_skf is not None:
+            for outer_train_index, test_index in self.outer_skf.split(self.train_idx, self.train_label):
+                test_set = DataLoader(DatasetWrapper(self.train_idx[test_index], self.dataset), batch_size = self.settings.BATCH_SIZE, shuffle = False, num_workers = 0)
+                yield outer_train_index, test_set
+        else:
+            for train_index, val_index in self.inner_skf.split(self.train_idx[index_split], self.train_label[index_split]):
+                train_set = DataLoader(DatasetWrapper(self.train_idx[index_split][train_index], self.dataset), batch_size = self.settings.BATCH_SIZE, shuffle = False, num_workers = 0)
+                val_set = DataLoader(DatasetWrapper(self.train_idx[index_split][val_index], self.dataset), batch_size = self.settings.BATCH_SIZE, shuffle = False, num_workers = 0)
+                yield train_set, val_set
+        
+
+
+
+
+
+
 
 

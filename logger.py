@@ -7,20 +7,11 @@ import logging
 from sklearn import metrics
 
 class Logger:
-    def __init__(self, c):
-        self.c = c
-
+    def __init__(self):
         os.makedirs('checkpoints', exist_ok = True)
+
         self.init_logging()
-
-        self.losses = [0, 0]
-
-        self.preds = [[], []]
-        self.corrects = [[], []]
-
-        self.best_acc = [-1, -1]
-        self.best_spec = [-1, -1]
-        self.best_sens = [-1, -1]
+        self.reset_tracking()
 
     def init_logging(self, log_path = 'network_log.txt'):
         if os.path.exists(log_path):
@@ -35,65 +26,70 @@ class Logger:
 
         logging.basicConfig(**args)
         logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))
+        logging.getLogger('matplotlib.font_manager').disabled = True
         logging.info("Logger Initialized")
 
-    def update(self, raw_output, ground_truth, loss, phase, bs, parser):
-        self.losses[phase] += (loss.item() * bs) / parser.lengths[phase]
+    def reset_tracking(self):
+        self.losses = [0, 0]
+        self.num_in_current = [0, 0]
 
-        if self.c.OPERATION & self.c.CLASSIFICATION:
-            preds = torch.argmax(F.softmax(raw_output, dim = 1), dim = 1)
+        self.running_preds = [[], []]
+        self.running_corrects = [[], []]
 
-            for gt, p in zip(ground_truth, preds):
-                self.corrects[phase].append(gt.item())
-                self.preds[phase].append(p.item())
+        self.total_accuracy = []
+        self.total_sensitivity = []
+        self.total_specificity = []
 
-            # self.corrects[phase] += 100 * (preds == ground_truth).sum().item() / parser.lengths[phase]
+        self.best_acc = [-1, -1]
+        self.best_spec = [-1, -1]
+        self.best_sens = [-1, -1]
+
+    def update(self, raw_output, ground_truth, loss, phase, bs):
+
+        self.losses[phase] += (loss.item() * bs)
+        self.num_in_current[phase] += bs
+
+        preds = torch.argmax(F.softmax(raw_output, dim = 1), dim = 1)
+
+        for gt, p in zip(ground_truth, preds):
+            self.running_corrects[phase].append(gt.item())
+            self.running_preds[phase].append(p.item())
 
     def epoch_start(self):
         self.losses = [0, 0]
+        self.num_in_current = [0, 0]
 
-        self.preds = [[], []]
-        self.corrects = [[], []]
+        self.running_preds = [[], []]
+        self.running_corrects = [[], []]
 
     def get_metrics(self):
-        ba, rc, pr, sn, sp = [], [], [], [], []
+        bal_acc, sens, spec = [], [], []
         
-        for correct, pred in zip(self.corrects, self.preds):
-            ba.append(round(metrics.balanced_accuracy_score(correct, pred), 4))
-            report = metrics.classification_report(correct, pred, target_names=['ncvt', 'cvt'], output_dict = True)
-            
-            rc.append(round(report['cvt']['recall'], 2))
-            pr.append(round(report['cvt']['precision'], 2))
-            sn.append(round(report['cvt']['recall'], 2))
-            sp.append(round(report['ncvt']['recall'], 2))
+        for correct, pred in zip(self.running_corrects, self.running_preds):
+            bal_acc.append(round(metrics.balanced_accuracy_score(correct, pred), 4))
+            sens.append(round(metrics.recall_score(correct, pred, pos_label = 1), 4))
+            spec.append(round(metrics.recall_score(correct, pred, pos_label = 0), 4))
 
-            # rc.append(round(metrics.recall_score(correct, pred), 4))
-            # pr.append(round(metrics.precision_score(correct, pred), 4))
-            # sn.append(round(metrics.recall_score(correct, pred, pos_label = 0), 4))
-            # sp.append(round(metrics.recall_score(correct, pred, pos_label = 0), 4))
-
-        return ba, sn, sp
+        return bal_acc, sens, spec
 
     def epoch_end(self, c, epoch, model, optimizer):
-        state = {'state_dict': model.state_dict(), 'optimizer': optimizer.state_dict}
-        path = os.path.join('checkpoints', f'epoch_{epoch}.t7')
-        torch.save(state, path)
+        # state = {'state_dict': model.state_dict(), 'optimizer': optimizer.state_dict}
+        # path = os.path.join('checkpoints', f'epoch_{epoch}.t7')
+        # torch.save(state, path)
 
-        losses = [round(l, 4) for l in self.losses]
+        losses = [round(l / nic, 4) for l, nic in zip(self.losses, self.num_in_current)]
         bal_acc, sens, spec = self.get_metrics()
+
+        self.total_accuracy.append(bal_acc)
+        self.total_sensitivity.append(sens)
+        self.total_specificity.append(spec)
 
         if bal_acc[1] > self.best_acc[1]:
             self.best_acc = [epoch, bal_acc[1]]
-        if sens[1] > self.best_sens[1]:
             self.best_sens = [epoch, sens[1]]
-        if spec[1] > self.best_spec[1]:
             self.best_spec = [epoch, spec[1]]
 
-        if self.c.OPERATION & self.c.CLASSIFICATION:
-            msg = f"[{datetime.now().strftime('%H:%M:%S')}] Epoch {epoch}/{c.NUM_EPOCHS}: train loss: {losses[0]}, train accuracy: {bal_acc[0]}%, test loss: {losses[1]}, test accuracy: {bal_acc[1]}% | ba[{bal_acc[1]}] sn[{sens[1]}] sp[{spec[1]}]"
-        else:
-            msg = f"[{datetime.now().strftime('%H:%M:%S')}] Epoch {epoch}/{c.NUM_EPOCHS}: train loss: {losses[1]}, test loss: {losses[1]}"
-
+        msg = f"[{datetime.now().strftime('%H:%M:%S')}] Epoch {epoch}/{c.NUM_EPOCHS}: train loss: {losses[0]}, train accuracy: {bal_acc[0]}%, test loss: {losses[1]}, test accuracy: {bal_acc[1]}% | sn[{sens[1]}] sp[{spec[1]}]"
         logging.info(msg)
 
     def report(self):

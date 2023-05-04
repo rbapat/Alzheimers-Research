@@ -23,19 +23,39 @@ class Constants:
     OPERATION = CLASSIFICATION | LONGITUDINAL
     DX_CAP = 2
     BATCH_SIZE = 1
-    NUM_EPOCHS = 1500
+    LEARNING_RATE = 0.0001      
+    NUM_EPOCHS = 500
     IN_DIMS = (182, 218, 182)
     OUTPUT_DIM = 2
+    CROSS_VAL = True
+    INNER_SPLIT = 3
+    OUTER_SPLIT = 5
 
-    DATASET_PATH = '/mnt/disks/data_disk/Combined_FSL'
-    EMBEDDING_PATH = '/mnt/disks/data_disk/Embedding'
+    DATASET_PATH = '/media/rohan/ThirdHardDrive/Combined_FSL'
+    EMBEDDING_PATH = '/home/rohan/Documents/embeddings_288'
     SPLITS = [0.8, 0.2]
     LOAD_PATHS = True
     
-    CLIN_VARS = ['MMSE', 'CDRSB', 'mPACCtrailsB', 'mPACCdigit', 'APOE4', 'ADAS11', 'ADAS13', 'ADASQ4', 'FAQ', 'RAVLT_forgetting', 'RAVLT_immediate', 'RAVLT_learning', 'TRABSCOR']
+    CLIN_VARS = ['MMSE', 'CDRSB', 'mPACCtrailsB', 'mPACCdigit', 'APOE4', 'ADAS11', 'ADAS13', 'ADASQ4', 'FAQ', 'RAVLT_forgetting', 'RAVLT_immediate', 'RAVLT_learning', 'TRABSCOR', 'Month']
     VISIT_DELTA = 6
     NUM_VISITS = 3
 
+
+def get_children(model):
+    # get children form model!
+    children = list(model.children())
+    flatt_children = []
+    if children == []:
+        # if model has no children; model is last child! :O
+        return model
+    else:
+       # look for children from children... to the last child!
+       for child in children:
+            try:
+                flatt_children.extend(get_children(child))
+            except TypeError:
+                flatt_children.append(get_children(child))
+    return flatt_children
 
 class CAMNet(nn.Module):
     def __init__(self, c):
@@ -43,6 +63,36 @@ class CAMNet(nn.Module):
 
         self.embedding_net = DenseNet(c.IN_DIMS, c.OUTPUT_DIM, [6, 12, 32, 24], growth_rate = 24, theta = 0.5, drop_rate = 0.0).cuda()
         self.predictor_net = MultiModalNet(288, len(c.CLIN_VARS))
+        self.activation_maps = []
+        self.gradient = None
+
+
+        def forward_hook_fn(module, input, output):
+            self.activation_maps.append(output)
+
+        def backward_hook_fn(module, grad_in, grad_out):
+            grad = self.activation_maps.pop() 
+            # for the forward pass, after the ReLU operation, 
+            # if the output value is positive, we set the value to 1,
+            # and if the output value is negative, we set it to 0.
+            grad[grad > 0] = 1 
+            
+            # grad_out[0] stores the gradients for each feature map,
+            # and we only retain the positive gradients
+            positive_grad_out = torch.clamp(grad_out[0], min=0.0)
+            new_grad_in = positive_grad_out * grad
+
+            return (new_grad_in,)
+
+        def hook_function(module, grad_in, grad_out):
+            self.gradient =  grad_in[0]
+
+        self.embedding_net.stem[0].model[0].register_full_backward_hook(hook_function)
+
+        for module in get_children(self):
+            if isinstance(module, nn.ReLU):
+                module.register_forward_hook(forward_hook_fn)
+                module.register_full_backward_hook(backward_hook_fn)
 
     def load_weights(self):
         self.embedding_net.load_weights('ckpt.t7')
@@ -126,13 +176,18 @@ def render(orig_scans, cam_scans, title, ptnum, view):
     plt.savefig(save_path)
     plt.clf()
 
-def plot_heatmap(cam, orig_vols, label, thresh = 50):
+def plot_heatmap(cam, guided_grads, orig_vols, label, thresh = 50):
 
-    cam = cam - torch.min(cam)
-    cam = 255 * (cam / torch.max(cam))
+    cam = skimage.transform.resize(cam, (3, 182, 218, 182), anti_aliasing = True, preserve_range = False, mode = 'edge')
+
+    if guided_grads is not None:
+        guided_grads = (guided_grads - guided_grads.min()) / (guided_grads.max()-guided_grads.min())
+        # cam *= guided_grads
+
+    cam = cam - np.min(cam)
+    cam = 255 * (cam / np.max(cam))
     cam = np.array(cam, dtype = np.uint8)
     cam = np.where(cam > thresh, cam, 0)
-    cam = skimage.transform.resize(cam, (3, 182, 218, 182), anti_aliasing = True, preserve_range = True, mode = 'edge')
 
     for i in range(3):  
         render(orig_vols[:, :, :, :], cam, label, label.split(' ')[-1], i)
@@ -150,17 +205,17 @@ def main(c):
     model.predictor_net.eval()
     criterion = nn.CrossEntropyLoss()
 
+
     features = torch.zeros(3, 24, 23, 27, 23)
+    gradients = torch.zeros(3, 24, 23, 27, 23)
+
     def save_conv(module, input, output):
-        #features.append(output.data.cpu().squeeze().numpy())
         features.copy_(output.detach())
 
-    gradients = torch.zeros(3, 24, 23, 27, 23)
     def save_grad(module, grad_input, grad_output):
-        #gradients.append(torch.nn.functional.relu(grad_output[0].data.cpu()).squeeze().numpy())
         gradients.copy_(F.relu(grad_output[0].detach()))
 
-    model.embedding_net.model[0].layers[0].register_backward_hook(save_grad)
+    model.embedding_net.model[0].layers[0].register_full_backward_hook(save_grad)
     model.embedding_net.model[0].layers[0].register_forward_hook(save_conv)
 
     corrects = 0
@@ -175,7 +230,7 @@ def main(c):
     avg_scan = torch.zeros((3, 182, 218, 182), dtype = torch.float32)
 
     mean_orig_volumes = None
-    for idx, (volume_paths, clin_vars, dx) in enumerate(parser.loaders[1]):
+    for idx, (volume_paths, clin_vars, dx) in enumerate(parser.full_testing_set()):
         with torch.no_grad():
             volume_paths = transform_strings(c, volume_paths)
             clin_vars, ground_truth = clin_vars.cuda(), dx.view(dx.shape[0]).cuda()
@@ -200,20 +255,19 @@ def main(c):
 
         avg_scan += orig_volumes[0, :, :, :, :]
         model.zero_grad()
+
+        batch_volumes.requires_grad_()
+        clin_vars.requires_grad_()
         raw_output = model(batch_volumes, clin_vars)
 
         loss = criterion(raw_output, ground_truth)
         preds = torch.argmax(F.softmax(raw_output, dim = 1), dim = 1)
         is_correct = (preds == ground_truth).sum().item()
         
-        raw_output[0, preds[0].item()].backward()
-
-        '''
-        cam_scans = [draw_cam(feature, grad) for feature, grad in zip(features, gradients)]
-
-        for i in range(3):
-            render(orig_volumes[0, :, :, :, :], cam_scans, f"Predicted: {preds[0].item()}, Actual: {ground_truth[0].item()}", idx, i)
-        '''
+        one_hot_output = torch.FloatTensor(1, 2).zero_().cuda()
+        one_hot_output[0][ground_truth[0].item()] = 1
+        
+        raw_output.backward(gradient = one_hot_output)
 
         weights = torch.mean(gradients, axis = (2, 3, 4))        
         cam = torch.zeros((3, *features.shape[2:]), dtype = torch.float32)
@@ -221,7 +275,9 @@ def main(c):
             for i, w in enumerate(weights[j]):
                 cam[j] += w * features[j, i, :, :, :]
 
-        plot_heatmap(cam, orig_volumes[0], f"{is_correct} {idx}")
+        cam = F.relu(cam)
+        guided_grads = model.gradient.data[:, 0, :, :, :].cpu().numpy()
+        plot_heatmap(cam, guided_grads, orig_volumes[0], f"{is_correct} {idx}")
 
 
         combined_map += cam
@@ -242,6 +298,7 @@ def main(c):
         print(cor + incor)
         del raw_output
 
+
     corrects_map /= cor
     incorrect_map /= incor
     cvt_map /= cvt
@@ -249,11 +306,11 @@ def main(c):
     combined_map /= (cor + incor)
     avg_scan /= (cor + incor)
 
-    plot_heatmap(corrects_map, avg_scan, "Mean Heatmap - Correct")
-    plot_heatmap(incorrect_map, avg_scan, "Mean Heatmap - Incorrect")
-    plot_heatmap(cvt_map, avg_scan, "Mean Heatmap - Converters")
-    plot_heatmap(ncvt_map, avg_scan, "Mean Heatmap - Nonconverters")
-    plot_heatmap(corrects_map, avg_scan, "Mean Heatmap - Combined")
+    plot_heatmap(corrects_map, None, avg_scan, "Mean Heatmap - Correct")
+    plot_heatmap(incorrect_map,  None, avg_scan, "Mean Heatmap - Incorrect")
+    plot_heatmap(cvt_map,  None, avg_scan, "Mean Heatmap - Converters")
+    plot_heatmap(ncvt_map,  None, avg_scan, "Mean Heatmap - Nonconverters")
+    plot_heatmap(corrects_map,  None, avg_scan, "Mean Heatmap - Combined")
 
 if __name__ == '__main__':
     main(Constants())

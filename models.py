@@ -117,7 +117,7 @@ class DenseNet(nn.Module):
                     continue
 
                 self.state_dict()[name].copy_(param)
-                print(f"Copied {name}")
+                #print(f"Copied {name}")
 
                 if requires_grad is not None:
                     self.state_dict()[name].requires_grad = requires_grad
@@ -146,7 +146,8 @@ class DenseNet(nn.Module):
 class MultiModalNet(nn.Module):
     def __init__(self, num_features, num_cv):
         super().__init__()
-
+        
+        
         self.model = nn.Sequential(
                                     nn.Conv1d(in_channels = num_features + num_cv, out_channels = 512, kernel_size = 3, stride = 1, padding = 1, bias = True),
                                     nn.ReLU(),
@@ -156,8 +157,9 @@ class MultiModalNet(nn.Module):
                                     nn.Flatten(1),
                                     nn.Linear(256, 2)
                                 )
+       
         
-        '''
+        '''  
         self.model = nn.Sequential(
                                     nn.Flatten(),
                                     nn.Linear(3 * (num_features + num_cv), 512),
