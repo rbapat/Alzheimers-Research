@@ -1,7 +1,9 @@
 import torch.nn as nn
+import torch.nn.functional as F
 import numpy as np
 import torch
 import math
+import os
 
 # Wrapper for convolution operations used in DenseNet
 class Conv3d(nn.Module):
@@ -27,7 +29,6 @@ class DenseUnit(nn.Module):
 
     def forward(self, x):
         x = self.bottleneck(x)
-        #x = self.drop(x)
         x = self.conv2(x)
         x = self.drop(x)
 
@@ -96,19 +97,8 @@ class DenseNet(nn.Module):
         self.model = nn.Sequential(*layers)
 
         self.end_pool = nn.AdaptiveAvgPool3d((1,1,1))
-        #self.fc = nn.Sequential(nn.Linear(2 * 3 * 2 * growth_rate, 1000), nn.ReLU(), nn.Linear(1000, out_features)) # nn.Linear(growth_rate, out_features)
         self.fc = nn.Linear(growth_rate, out_features)
-        self.drop = nn.Dropout(0.4)
         
-        # Weight initialization, not sure if I actually need this
-        for m in self.modules():
-            if isinstance(m, nn.Conv3d):
-                nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="relu")
-                if m.bias is not None:
-                    nn.init.constant_(m.bias, 0)    
-            elif isinstance(m, (nn.BatchNorm3d)):
-                nn.init.constant_(m.weight, 1)
-                nn.init.constant_(m.bias, 0)
 
     # Reads previously saved model weights. This is more complicated than it needs to be but has more verbose errors just in case
     def load_weights(self, weight_file, requires_grad = None):
@@ -134,17 +124,11 @@ class DenseNet(nn.Module):
 
             print("Pretrained Weights Loaded!")
 
-    # Just gets the output of the final convolutional layers
     def features(self, x):
-        x = x.view(-1, 1,  *self.dims)
-
+        x = x.view(-1, 1, *self.dims)
         x = self.stem(x)
-
         x = self.model(x)
-
-        x = self.end_pool(x)
-        x = torch.flatten(x, 1)
-
+        x = x.view(len(x), -1)
         return x
 
     def forward(self, x, clin_vars):
@@ -154,30 +138,163 @@ class DenseNet(nn.Module):
 
         x = self.model(x)
 
-        x = self.end_pool(x)
-        x = torch.flatten(x, 1)
-        # x = self.drop(x)
+        x = self.end_pool(x).view(len(clin_vars), -1)
         x = self.fc(x)
 
         return x
 
-# LSTM model that I'm using right now, relatively simple and can definitely be improved/tuned further
-class LSTMNet(nn.Module):
-    def __init__(self, conv_features = 16, lstm_hidden = 256, lstm_layers = 2):
-        super(LSTMNet, self).__init__()
+class MultiModalNet(nn.Module):
+    def __init__(self, num_features, num_cv):
+        super().__init__()
 
-        conv_features += 4
-        self.lstm = nn.LSTM(input_size = conv_features, hidden_size = lstm_hidden, num_layers = lstm_layers, bias = True, batch_first = True, dropout = 0.1)
+        self.model = nn.Sequential(
+                                    nn.Conv1d(in_channels = num_features + num_cv, out_channels = 512, kernel_size = 3, stride = 1, padding = 1, bias = True),
+                                    nn.ReLU(),
+                                    nn.Conv1d(in_channels = 512, out_channels = 256, kernel_size = 3, stride = 1, padding = 1, bias = True),
+                                    nn.ReLU(),
+                                    nn.MaxPool1d(kernel_size = 2, stride = 2, padding = 0),
+                                    nn.Flatten(1),
+                                    nn.Linear(256, 2)
+                                )
+        
+        '''
+        self.model = nn.Sequential(
+                                    nn.Flatten(),
+                                    nn.Linear(3 * (num_features + num_cv), 512),
+                                    nn.ReLU(),
+                                    nn.Linear(512, 128),
+                                    nn.ReLU(),
+                                    nn.Linear(128, 2)
+                                )
+        '''
 
+    def forward(self, x, cv):
+        x = torch.cat([x, cv], dim = -1)
+        x = x.transpose(1, 2)
+        return self.model(x)
+
+class ImageOnly(nn.Module):
+    def __init__(self, num_features, num_cv):
+        super().__init__()
+        
+        self.model = nn.Sequential(
+                                    nn.Conv1d(in_channels = num_features, out_channels = 512, kernel_size = 3, stride = 1, padding = 1, bias = True),
+                                    nn.ReLU(),
+                                    nn.Conv1d(in_channels = 512, out_channels = 256, kernel_size = 3, stride = 1, padding = 1, bias = True),
+                                    nn.ReLU(),
+                                    nn.MaxPool1d(kernel_size = 2, stride = 2, padding = 0),
+                                    nn.Flatten(1),
+                                    nn.Linear(256, 2)
+                                )
+
+    def forward(self, x, cv):
+        x = x.transpose(1, 2)
+        return self.model(x)
+
+
+class CVOnly(nn.Module):
+    def __init__(self, num_features, num_cv):
+        super().__init__()
+        
+        self.model = nn.Sequential(
+                                    nn.Conv1d(in_channels = num_cv, out_channels = 512, kernel_size = 3, stride = 1, padding = 1, bias = True),
+                                    nn.ReLU(),
+                                    nn.Conv1d(in_channels = 512, out_channels = 256, kernel_size = 3, stride = 1, padding = 1, bias = True),
+                                    nn.ReLU(),
+                                    nn.MaxPool1d(kernel_size = 2, stride = 2, padding = 0),
+                                    nn.Flatten(1),
+                                    nn.Linear(256, 2)
+                                )
+
+    def forward(self, x, cv):
+        cv = cv.transpose(1, 2)
+        return self.model(cv)
+
+# https://pytorch.org/vision/0.12/_modules/torchvision/models/vgg.html
+class VGGNet(nn.Module):
+    def __init__(self, in_dims, out_features):
+        super().__init__()
+
+        self.dims = in_dims
+
+        cfg = [64, 64, "M", 128, 128, "M", 256, 256, 256, 256, "M", 512, 512, 512, 512, "M", 512, 512, 512, 512, "M"]
+        layers = []
+        in_channels = 1
+
+        for v in cfg:
+            if v == 'M':
+                layers.append(nn.MaxPool3d(kernel_size = 2, stride = 2))
+            else:
+                layers.append(nn.Conv3d(in_channels, v, kernel_size = 3, stride = 1, padding = 1))
+                layers.append(nn.ReLU())
+                in_channels = v
+
+        self.model = nn.Sequential(*layers)
         self.predictor = nn.Sequential(
-                                        nn.Linear(lstm_hidden, lstm_hidden // 2), nn.ReLU(),
-                                        nn.Linear(lstm_hidden // 2, lstm_hidden // 4), nn.ReLU(),
-                                        nn.Linear(lstm_hidden // 4, 2)
-                                    )
+            nn.AdaptiveAvgPool3d((7, 7, 7)),
+            nn.Flatten(1),
+            nn.Linear(512 * 7 * 7 * 7, 4096),
+            nn.ReLU(True),
+            nn.Dropout(0.5),
+            nn.Linear(4096, 4096),
+            nn.ReLU(True),
+            nn.Dropout(0.5),
+            nn.Linear(4096, out_features),
+        )
 
-    def forward(self, x, clin_vars):
-        x = torch.cat([x, clin_vars], dim = 2)
-        x, (h_n, c_n) = self.lstm(x) # num_layers, batch_size, lstm_hidden
-            
-        x = self.predictor(x[:, -1, :]) 
+    def forward(self, x, cv):
+        x = x.view(-1, 1, *self.dims)
+
+        x = self.model(x)
+        x = self.predictor(x)
+
+        return x
+
+class DilationNet(nn.Module):
+    def __init__(self, in_dims, out_features):
+        super().__init__()
+
+        self.dims = in_dims
+
+        self.model = nn.Sequential(
+                                    nn.Conv3d(1, 4, kernel_size = 3, stride = 1, padding = 3, dilation = 3),
+                                    nn.BatchNorm3d(4),
+                                    nn.LeakyReLU(),
+                                    nn.Conv3d(4, 4, kernel_size = 3, stride = 1, padding = 3, dilation = 3),
+                                    nn.BatchNorm3d(4),
+                                    nn.LeakyReLU(),
+                                    nn.MaxPool3d(kernel_size = 4, stride = 2),
+                                    nn.Conv3d(4, 8, kernel_size = 3, stride = 1, padding = 3, dilation = 3),
+                                    nn.BatchNorm3d(8),
+                                    nn.LeakyReLU(),
+                                    nn.Conv3d(8, 8, kernel_size = 3, stride = 1, padding = 3, dilation = 3),
+                                    nn.BatchNorm3d(8),
+                                    nn.LeakyReLU(),
+                                    nn.MaxPool3d(kernel_size = 4, stride = 2),
+                                    nn.Conv3d(8, 16, kernel_size = 3, stride = 1, padding = 3, dilation = 3),
+                                    nn.BatchNorm3d(16),
+                                    nn.LeakyReLU(),
+                                    nn.Conv3d(16, 16, kernel_size = 3, stride = 1, padding = 3, dilation = 3),
+                                    nn.BatchNorm3d(16),
+                                    nn.LeakyReLU(),
+                                    nn.MaxPool3d(kernel_size = 4, stride = 2),
+                                    nn.Conv3d(16, 32, kernel_size = 3, stride = 1, padding = 3, dilation = 3),
+                                    nn.BatchNorm3d(32),
+                                    nn.LeakyReLU(),
+                                    nn.Conv3d(32, 32, kernel_size = 3, stride = 1, padding = 3, dilation = 3),
+                                    nn.BatchNorm3d(32),
+                                    nn.LeakyReLU(),
+                                    nn.MaxPool3d(kernel_size = 4, stride = 2),
+                                    nn.Flatten(1),
+                                    nn.Linear(9 * 9 * 11 * 32, 128),
+                                    nn.LeakyReLU(),
+                                    nn.Linear(128, 128),
+                                    nn.LeakyReLU(),
+                                    nn.Linear(128, 2)
+                                )
+
+    def forward(self, x, cv):
+        x = x.view(-1, 1, *self.dims)
+        x = self.model(x)
+
         return x

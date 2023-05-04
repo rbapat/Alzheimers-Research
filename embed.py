@@ -15,13 +15,14 @@ If the network was pretrained well enough, these embeddings should be a lower di
 '''
 
 def main():
-    model = model = DenseNet(IN_DIMS, OUTPUT_DIM, [6, 12, 32, 24], growth_rate = 16, theta = 0.5, drop_rate = 0.0).cuda()
-    model.load_weights(os.path.join('checkpoints_backup', 'embedding_weights.t7'))
+    model = model = DenseNet(IN_DIMS, OUTPUT_DIM, [6, 12, 32, 24], growth_rate = 24, theta = 0.5, drop_rate = 0.1).cuda()
+    model.load_weights('ckpt.t7')
     model.eval()
 
     # create list of scans to read
     file_list = []
-    rootname, newname = '/media/rohan/ThirdHardDrive/Combined_FSL', '/home/rohan/Documents/Alzheimers/embeddings'
+    #rootname, newname = '/mnt/disks/data_disk/Combined_FSL', '/mnt/disks/data_disk/Embedding'
+    rootname, newname = '/media/rohan/ThirdHardDrive/Combined_FSL', '/home/rohan/Documents/Embeddings/main'
     for (root, dirs, files) in os.walk(rootname):
         for file in files:
             if file.endswith('.nii'):
