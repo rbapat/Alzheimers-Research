@@ -1,0 +1,6 @@
+kwargs:
+  - seed: 1
+defaults:
+ - _self_
+ - logging: basic
+ - task: basic
