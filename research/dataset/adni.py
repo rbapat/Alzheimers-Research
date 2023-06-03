@@ -129,8 +129,9 @@ class AdniDataset:
                     val_loader = self.create_dataloader(full_train[val], proxy=True)
                     training_folds.append((train_loader, val_loader))
 
+                full_train_loader = self.create_dataloader(full_train, proxy=True)
                 test_loader = self.create_dataloader(test)
-                self.folds.append((training_folds, test_loader))
+                self.folds.append((training_folds, full_train_loader, test_loader))
 
         elif isinstance(split_type, dc.FlatCV):
             skf = StratifiedKFold(split_type.num_folds)
@@ -144,8 +145,9 @@ class AdniDataset:
                 val_loader = self.create_dataloader(train_idxs[val])
                 training_folds.append((train_loader, val_loader))
 
+            full_train_loader = self.create_dataloader(train_idxs)
             test_loader = self.create_dataloader(test_idxs)
-            self.folds.append((training_folds, test_loader))
+            self.folds.append((training_folds, full_train_loader, test_loader))
         elif isinstance(split_type, dc.BasicSplit):
             assert split_type.sum() == 1
 
@@ -202,11 +204,11 @@ class AdniDataset:
 
         - If `isinstance(self.cfg.split_type, NestedCV)`, then this returns:
             - a list with a tuple of dataloaders
-            - each of these tuples contain (training_data, test_dataloader)
+            - each of these tuples contain (training_data, full_train_loader, test_dataloader)
             - training_data is a list of tuple with (training_dataloader, val_dataloader)
         - If `isinstance(self.cfg.split_type, FlatCV)`, then this returns:
-            - a list of tuple with (training_data, test_dataloader)
-            - training_data is a list of tuple with (training_dataloader, val_dataloader)
+            - a tuple of (training_data, test_dataloader)
+            - training_data is a list of tuple with (training_dataloader, full_train_loader, val_dataloader)
         - If `isinstance(self.cfg.split_type, BasicSplit)`, then this returns:
             - a tuple with (training_dataloader, val_dataloader, test_dataloader)
         """

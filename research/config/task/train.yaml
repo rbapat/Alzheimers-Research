@@ -1,1 +1,13 @@
 _target_: tasks.train.Train
+
+train_cfg:
+  model_cls:
+    _target_: hydra.utils.get_class
+    path: whatver.model.i.want
+  optim:
+    _target_: functools.partial
+    _args_: ['${get_method: torch.optim.Adam}']
+    lr: 1e-5,
+    weight_decay: 0.2
+  loss_function:
+    _target_: whatever_loss_i_want

@@ -1,9 +1,10 @@
-from typing import Dict, Tuple, List, Optional, Union
+import os
 import logging
 from collections import defaultdict
-import pandas as pd
-import os
+from typing import Dict, Tuple, List
+
 import numpy as np
+import pandas as pd
 
 import research.common.dataset_config as dc
 

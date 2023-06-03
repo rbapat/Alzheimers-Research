@@ -1,14 +1,11 @@
-import logging
 import random
-import sys
-import os
 
-from omegaconf import DictConfig
-import numpy as np
-import hydra
 import torch
+import hydra
+import numpy as np
+from omegaconf import DictConfig, OmegaConf
 
-from research.common.config_classes import BaseConfig
+OmegaConf.register_new_resolver("get_method", hydra.utils.get_method)
 
 
 def set_seed(seed):
