@@ -6,7 +6,7 @@ dataset:
     _target_: research.common.dataset_config.DatasetConfig
     task: 
       _target_: '${get_method: research.common.dataset_config.DatasetTask.__getattr__}'
-      name: PREDICTION
+      name: CLASSIFICATION
     mode:
       _target_: '${get_method: research.common.dataset_config.DataMode.__getattr__}'
       name: SCANS
@@ -14,12 +14,14 @@ dataset:
       _target_: research.common.dataset_config.BasicSplit
       train_ratio: 0.8
       val_ratio: 0.1
-      test_ratio: 0.1 
+      test_ratio: 0.1
     scan_paths: "/media/rohan/ThirdHardDrive/Research/Combined_FSL/scans"
     embedding_paths: "/media/rohan/ThirdHardDrive/Research/Combined_FSL/embeddings"
 
-    batch_size: 8
-    # cohorts: 
+    batch_size: 4
+    cohorts: 
+      - "CN"
+      - "Dementia"
     ni_vars:
       - "MMSE"
       - "CDRSB"
@@ -44,14 +46,22 @@ train_cfg:
   _target_: research.common.config_classes.TrainConfig
   model_cls:
     _target_: hydra.utils.get_class
-    path: research.models.miniconv.MultiModalNet
+    path: research.models.densenet.DenseNet
   optim:
     _target_: functools.partial
     _args_: ['${get_method: torch.optim.SGD}']
-    lr: 1e-4
+    lr: 1e-3
     momentum: 0.9
   loss_function:
     _target_: torch.nn.CrossEntropyLoss
   num_epochs: 100
 
 model:
+  channels:
+    - 6
+    - 12
+    - 32
+    - 24
+  growth_rate: 24
+  theta: 0.5
+  drop_rate: 0.1

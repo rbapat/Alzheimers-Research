@@ -111,7 +111,7 @@ class DenseNet(nn.Module):
         self.model = nn.Sequential(*layers)
 
         self.end_pool = nn.AdaptiveAvgPool3d((1, 1, 1))
-        self.fc = nn.Linear(growth_rate, out_shape)
+        self.fc = nn.Linear(growth_rate, out_shape[0])
 
     # Reads previously saved model weights. This is more complicated than it needs to be but has more verbose errors just in case
     def load_weights(self, weight_file, requires_grad=None):

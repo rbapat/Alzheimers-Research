@@ -123,10 +123,10 @@ def create_dataset(cfg: dc.DatasetConfig) -> List:
         if cohort.is_classification():
             candidates = [pt_df[pt_df["DX"] == dx] for dx in cfg.cohorts]
 
-            # select one of the timepoints this patient has; prioritize dementia, then MCI, then normal diagnosis
             for cand in candidates:
                 if len(cand) > 0:
-                    selected_ids.append(cand[["DX", "IMAGEUID"]].values[0])
+                    dx, imid = cand[["DX", "IMAGEUID"]].values[0]
+                    selected_ids.append((dc.PatientCohort.dx_to_cohort(dx), int(imid)))
                     if len(cfg.ni_vars) > 0:
                         selected_data.append(cand[cfg.ni_vars].values[0])
 
@@ -154,9 +154,9 @@ def create_dataset(cfg: dc.DatasetConfig) -> List:
     ni_data = np.apply_along_axis(lambda row: (row - mean) / std, 1, ni_data)
 
     dataset = []
-    for idx, (imids, dx) in enumerate(scan_ids):
+    for idx, (dx, imids) in enumerate(scan_ids):
         if cfg.task == dc.DatasetTask.CLASSIFICATION:
-            if len(cfg.cohorts) > 0 and dx not in cfg.cohorts:
+            if len(cfg.cohorts) > 0 and dx.name not in cfg.cohorts:
                 continue
             elif len(ni_data) == 0:
                 dataset.append((paths[int(imids)], None, dx))

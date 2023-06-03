@@ -75,7 +75,7 @@ class _Dataset(Dataset):
             self.dxs.append(cohort.get_ordinal(cfg.cohorts))
             self.num_samples += 1
 
-        if self.ni[0] is not None:
+        if len(self.ni) > 0:
             self.ni = torch.tensor(
                 np.array(self.ni), device=self.device, dtype=torch.float
             )
@@ -113,7 +113,7 @@ class AdniDataset:
         data_paths = helper.create_dataset(dataset_cfg)
         self.dataset = _Dataset(dataset_cfg, data_paths)
 
-        self.idxs = list(range(len(self.dataset)))
+        self.idxs = torch.arange(len(self.dataset))
         random.shuffle(self.idxs)
         self.labels = self.dataset.dxs[self.idxs].cpu().numpy()
 
