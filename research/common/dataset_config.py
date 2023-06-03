@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from dataclass_type_validator import dataclass_validate
 from enum import IntEnum, auto
 from typing import Union, List, Optional
@@ -15,8 +15,6 @@ class PatientCohort(IntEnum):
     Dementia = auto()
     sMCI = auto()
     pMCI = auto()
-
-    index_mapping = {CN: 0, MCI: 1, Dementia: 2, sMCI: 0, pMCI: 1}
 
     def dx_to_cohort(dx):
         if dx == "CN":
@@ -47,10 +45,17 @@ class PatientCohort(IntEnum):
             raise RuntimeError(f"Unknown task type: {self.value}")
 
     def get_ordinal(self, cohorts: Optional[List[str]]):
-        if cohorts is not None:
+        if len(cohorts) > 0:
             return cohorts.index(self.name)
         else:
-            return self.index_mapping[self.value]
+            index_mapping = {
+                PatientCohort.CN: 0,
+                PatientCohort.MCI: 1,
+                PatientCohort.Dementia: 2,
+                PatientCohort.sMCI: 0,
+                PatientCohort.pMCI: 1,
+            }
+            return index_mapping[self.value]
 
 
 class DataMode(IntEnum):
@@ -58,21 +63,21 @@ class DataMode(IntEnum):
     PATHS = auto()
 
 
-@dataclass_validate
+# @dataclass_validate
 @dataclass
 class NestedCV:
     num_inner_fold: int
     num_outer_fold: int
 
 
-@dataclass_validate
+# @dataclass_validate
 @dataclass
 class FlatCV:
     num_folds: int
     test_ratio: float
 
 
-@dataclass_validate
+# @dataclass_validate
 @dataclass
 class BasicSplit:
     train_ratio: float
@@ -80,13 +85,13 @@ class BasicSplit:
     test_ratio: float
 
     def sum(self):
-        return self.test_ratio + self.val_ratio + self.test_ratio
+        return self.train_ratio + self.val_ratio + self.test_ratio
 
 
 SplitTypes = Union[NestedCV, FlatCV, BasicSplit]
 
 
-@dataclass_validate
+# @dataclass_validate
 @dataclass
 class DatasetConfig:
     task: DatasetTask
@@ -94,14 +99,15 @@ class DatasetConfig:
     split_type: SplitTypes
 
     scan_paths: str
-    embedding_paths: Optional[str] = None
 
     batch_size: int
-    cohorts: Optional[List[str]] = []
-    ni_vars = Optional[List[str]] = []
 
     load_embeddings: bool
     num_seq_visits: int
     seq_visit_delta: int
     progression_window: int
     tolerance: int
+
+    embedding_paths: Optional[str] = None
+    cohorts: Optional[List[str]] = field(default_factory=list)
+    ni_vars: Optional[List[str]] = field(default_factory=list)

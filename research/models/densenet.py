@@ -87,7 +87,9 @@ class TransitionBlock(nn.Module):
 
 # Main DenseNet implementation I'm using right now, implementation was based on the official pytorch implementation
 class DenseNet(nn.Module):
-    def __init__(self, mri_shape, out_shape, channels, growth_rate, theta, drop_rate):
+    def __init__(
+        self, mri_shape, out_shape, channels, growth_rate, theta, drop_rate, **kwargs
+    ):
         super(DenseNet, self).__init__()
 
         self.dims = mri_shape

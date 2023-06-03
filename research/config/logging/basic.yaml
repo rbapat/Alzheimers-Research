@@ -1,0 +1,4 @@
+_target_: research.tasks.logger.Logger
+ckpt_folder: "/home/rohan/projects/Alzheimers-Research/research/checkpoints"
+result_folder: "/home/rohan/projects/Alzheimers-Research/research/results"
+log_epochs: True

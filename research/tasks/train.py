@@ -20,13 +20,18 @@ class TrainTask(AbstractTask):
     ):
         self.dataset = dataset
         self.train_cfg = train_cfg
+
         self.logger = logger
 
         mri_shape, ni_shape, out_shape = self.dataset.get_data_shape()
-        self.model_args = kwargs["model"]
+
+        model_args = kwargs["model"]
+        self.model_args = {} if model_args is None else model_args
         self.model_args["mri_shape"] = mri_shape
         self.model_args["ni_shape"] = ni_shape
         self.model_args["out_shape"] = out_shape
+
+        logging.info("Train task initialized")
 
     def init_model(self) -> Tuple[nn.Module, optim.Optimizer, nn.Module]:
         model = self.train_cfg.model_cls(**self.model_args).cuda()
@@ -102,6 +107,7 @@ class TrainTask(AbstractTask):
         return results
 
     def nested_cv(self, split_type: dc.NestedCV):
+        logging.info("Doing nested CV...")
         train_results = torch.zeros(
             split_type.num_outer_fold,
             split_type.num_inner_fold,
@@ -128,8 +134,10 @@ class TrainTask(AbstractTask):
 
         self.logger.save_results(train_results, "train")
         self.logger.save_results(test_results, "test")
+        logging.info("Done!")
 
     def flat_cv(self, split_type: dc.FlatCV):
+        logging.info("Doing flat CV...")
         train_results = torch.zeros(
             split_type.num_folds, 2, self.train_cfg.num_epochs, 4
         )
@@ -143,16 +151,20 @@ class TrainTask(AbstractTask):
         test_results = self.evaluate_model(full_train_loader, test_loader, True)
         self.logger.save_results(train_results, "train")
         self.logger.save_results(test_results, "test")
+        logging.info("Done!")
 
     def basic_split(self, split_type: dc.BasicSplit):
-        train_loader, val_loader, test_loader = self.dataset.get_data()
+        logging.info("Doing a basic split...")
+        train_loader, val_loader, test_loader = self.dataset.get_data()[0]
         results = self.evaluate_model(
             train_loader, val_loader, True, additional=(test_loader,)
         )
 
         self.logger.save_results(results, "train_test")
+        logging.info("Done!")
 
     def run(self):
+        logging.info("Starting training task...")
         split_type = self.dataset.get_split_type()
         if isinstance(split_type, dc.NestedCV):
             self.nested_cv(split_type)

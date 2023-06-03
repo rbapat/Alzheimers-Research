@@ -33,7 +33,7 @@ def get_df(cfg: dc.DatasetConfig) -> Tuple[Dict[int, str], pd.DataFrame]:
 
     # get ADNIMERGE dataframe, remove any irrelevant data, remove any data we dont have downloaded
     volume_dict = get_volume_paths(cfg.scan_paths)
-    df = pd.read_csv("ADNIMERGE.csv", low_memory=False).dropna(subsets=subs)[subs]
+    df = pd.read_csv("ADNIMERGE.csv", low_memory=False).dropna(subset=subs)[subs]
     df = df[df["IMAGEUID"].isin(volume_dict.keys())]
 
     # remove any data that we've downloaded but doesn't meet criteria for current task
@@ -70,7 +70,7 @@ def get_num_seq_rows(
 def create_class_dict(
     cfg: dc.DatasetConfig,
 ) -> Tuple[Dict[int, str], pd.DataFrame, Dict[str, Tuple[dc.PatientCohort, List[int]]]]:
-    paths, df = get_df(cfg.scan_paths, cfg.ni_vars)
+    paths, df = get_df(cfg)
     unique_pt = df["PTID"].unique()
 
     cohort_dict = {}
@@ -88,7 +88,7 @@ def create_class_dict(
             for dxs, months, ids in seqs:
                 # get df for months `months[0] + cfg.progression_window +/- cfg.tolerance`
                 mdf = pt_df["Month"] - (months[0] + cfg.progression_window)
-                final_df = pt_df[(mdf >= cfg.tolerance) & (mdf <= cfg.tolerance)]
+                final_df = pt_df[(mdf >= -cfg.tolerance) & (mdf <= cfg.tolerance)]
 
                 if len(final_df) == 0:
                     continue
@@ -140,7 +140,7 @@ def create_dataset(cfg: dc.DatasetConfig) -> List:
 
             if len(cfg.ni_vars) > 0:
                 for v in rows[cfg.ni_vars].values:
-                    selected_data.append(v.item() if len(v) > 0 else -1)
+                    selected_data.append(v if len(v) > 0 else -1)
 
     scan_ids, ni_data = data_ids[cfg.task]
     if len(scan_ids) == 0 or len(ni_data) == 0:
@@ -150,8 +150,8 @@ def create_dataset(cfg: dc.DatasetConfig) -> List:
         exit(1)
 
     ni_data = np.array(ni_data)
-    mean, std = np.mean(data, axis=0), np.std(data, axis=0)
-    data = np.apply_along_axis(lambda row: (row - mean) / std, 1, data)
+    mean, std = np.mean(ni_data, axis=0), np.std(ni_data, axis=0)
+    ni_data = np.apply_along_axis(lambda row: (row - mean) / std, 1, ni_data)
 
     dataset = []
     for idx, (imids, dx) in enumerate(scan_ids):
@@ -171,4 +171,5 @@ def create_dataset(cfg: dc.DatasetConfig) -> List:
                     (volume_paths, ni_data[seqlen * idx : seqlen * idx + seqlen], dx)
                 )
 
+    logging.info(f"Found {len(dataset)} patients in this dataset")
     return dataset

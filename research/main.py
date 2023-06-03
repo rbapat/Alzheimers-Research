@@ -17,10 +17,12 @@ def set_seed(seed):
 @hydra.main(config_path="config", config_name="config", version_base="1.3")
 def main(cfg: DictConfig):
     kwargs = dict(cfg["kwargs"])
+    kwargs["_convert_"] = "all"
+
     set_seed(kwargs["seed"])
 
-    kwargs["logging"] = hydra.utils.instantiate(cfg.logging, **kwargs)
-    kwargs["task"] = hydra.utils.instantiate(cfg.task, **kwargs)
+    kwargs["logger"] = hydra.utils.instantiate(cfg["logging"], **kwargs)
+    kwargs["task"] = hydra.utils.instantiate(cfg["task"], **kwargs)
 
     kwargs["task"].run()
 

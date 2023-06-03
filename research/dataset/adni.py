@@ -19,7 +19,7 @@ class _Dataset(Dataset):
         self.ni = []
         self.dxs = []
         self.num_samples = 0
-        self.device = torch.Device(device)
+        self.device = torch.device(device)
         self.getter = None
 
         self.load_data(cfg, data_paths)
@@ -33,19 +33,17 @@ class _Dataset(Dataset):
             if cfg.load_embeddings:
                 self.paths = [
                     [
-                        [
-                            path.replace(cfg.scan_paths, cfg.embedding_paths).replace(
-                                ".nii", ".npy"
-                            )
-                            for path in path_list
-                        ]
+                        path.replace(cfg.scan_paths, cfg.embedding_paths).replace(
+                            ".nii", ".npy"
+                        )
+                        for path in path_list
                     ]
                     for path_list in self.paths
                 ]
 
             if cfg.mode == dc.DataMode.SCANS:
                 if cfg.load_embeddings:
-                    self.paths = self.load_embeddings()
+                    self.paths = self.load_embeddings(cfg)
                     self.getter = self.default_getter  # get_embedding_prediction
                 else:
                     self.getter = self.get_scan_prediction
@@ -56,6 +54,7 @@ class _Dataset(Dataset):
             logging.error(f"Unknown task {cfg.task} and mode {cfg.mode}")
 
     def load_embeddings(self, cfg: dc.DatasetConfig):
+        logging.info("Creating embeddings...")
         embeddings = []
         for embedding_paths in self.paths:
             embeddings.append([])
@@ -66,6 +65,7 @@ class _Dataset(Dataset):
 
                 embeddings[-1].append(np.load(path).squeeze())
 
+        logging.info("Done")
         return torch.tensor(np.array(embeddings), device=self.device)
 
     def load_data(self, cfg: dc.DatasetConfig, data_paths: List):
@@ -76,9 +76,11 @@ class _Dataset(Dataset):
             self.num_samples += 1
 
         if self.ni[0] is not None:
-            self.ni = torch.Tensor(np.array(self.ni), device=self.device)
+            self.ni = torch.tensor(
+                np.array(self.ni), device=self.device, dtype=torch.float
+            )
 
-        self.dxs = torch.LongTensor(self.dxs, device=self.device)
+        self.dxs = torch.tensor(self.dxs, device=self.device, dtype=torch.long)
 
     def default_getter(self, path, ni, dx):
         return path, ni, dx
@@ -86,14 +88,14 @@ class _Dataset(Dataset):
     def get_scan_classification(self, path, ni, dx):
         mat = nib.load(path).get_fdata()
         mat = (mat - mat.min()) / (mat.max() - mat.min())  # min-max normalization
-        return torch.Tensor(mat, device=self.device), ni, dx
+        return torch.tensor(mat, device=self.device, dtype=torch.float), ni, dx
 
     def get_scan_prediction(self, paths, ni, dx):
         mats = []
         for path in paths:
             mat = nib.load(path).get_fdata()
             mat = (mat - mat.min()) / (mat.max() - mat.min())  # min-max normalization
-            mats.append(torch.Tensor(mat, device=self.device))
+            mats.append(torch.tensor(mat, device=self.device, dtype=torch.float))
 
         return torch.cat(mats), ni, dx
 
@@ -119,21 +121,30 @@ class AdniDataset:
         self.folds = []
 
         if isinstance(split_type, dc.NestedCV):
+            logging.info(f"Nested CV: {len(self.idxs)} samples")
+
             outer_skf = StratifiedKFold(split_type.num_outer_fold)
             inner_skf = StratifiedKFold(split_type.num_inner_fold)
 
             for full_train, test in outer_skf.split(self.idxs, self.labels):
                 training_folds = []
                 for train, val in inner_skf.split(full_train, self.labels[full_train]):
+                    logging.info(
+                        f"Inner fold train set has {len(train)} samples, val set has {len(val)} samples"
+                    )
                     train_loader = self.create_dataloader(full_train[train], proxy=True)
                     val_loader = self.create_dataloader(full_train[val], proxy=True)
                     training_folds.append((train_loader, val_loader))
 
+                logging.info(
+                    f"Full train set has {len(full_train)} samples, test set has {len(test)} samples"
+                )
                 full_train_loader = self.create_dataloader(full_train, proxy=True)
                 test_loader = self.create_dataloader(test)
                 self.folds.append((training_folds, full_train_loader, test_loader))
 
         elif isinstance(split_type, dc.FlatCV):
+            logging.info(f"Flat CV: {len(self.idxs)} samples")
             skf = StratifiedKFold(split_type.num_folds)
             train_idxs, test_idxs, train_lab, test_lab = train_test_split(
                 self.idxs, self.labels, test_size=split_type.test_ratio
@@ -145,11 +156,23 @@ class AdniDataset:
                 val_loader = self.create_dataloader(train_idxs[val])
                 training_folds.append((train_loader, val_loader))
 
+                logging.info(
+                    f"Fold train set has {len(train)} samples, val set has {len(val)} samples"
+                )
+
+            logging.info(
+                f"Full train set has {len(train_idxs)} samples, test set has {len(test_idxs)} samples"
+            )
             full_train_loader = self.create_dataloader(train_idxs)
             test_loader = self.create_dataloader(test_idxs)
             self.folds.append((training_folds, full_train_loader, test_loader))
         elif isinstance(split_type, dc.BasicSplit):
-            assert split_type.sum() == 1
+            logging.info(f"Basic Split: {len(self.idxs)} samples")
+            if split_type.sum() != 1:
+                logging.error(
+                    f"split_type.sum() must be 1, was {split_type.sum()} instead"
+                )
+                exit(1)
 
             full_train_idxs, test_idxs, train_labels, _ = train_test_split(
                 self.idxs, self.labels, test_size=split_type.test_ratio
@@ -159,6 +182,9 @@ class AdniDataset:
                 full_train_idxs, train_labels, test_size=split_type.val_ratio
             )
 
+            logging.info(
+                f"Train set has {len(train_idxs)} samples, val has {len(val_idxs)} samples, test has {len(test_idxs)} samples"
+            )
             train_loader = self.create_dataloader(train_idxs)
             val_loader = self.create_dataloader(val_idxs)
             test_loader = self.create_dataloader(test_idxs)
@@ -175,7 +201,7 @@ class AdniDataset:
         return DataLoader(
             self.dataset,
             batch_size=self.cfg.batch_size,
-            shuffle=True,
+            # shuffle=True,
             sampler=SubsetRandomSampler(subset_idxs),
         )
 
@@ -183,7 +209,7 @@ class AdniDataset:
         return self.cfg.split_type
 
     def get_data_shape(self) -> Tuple[Tuple[int], ...]:
-        if self.cfg.mode == dc.DataMode.SCANS or (
+        if self.cfg.mode == dc.DataMode.PATHS or (
             self.cfg.task == dc.DatasetTask.PREDICTION and not self.cfg.load_embeddings
         ):
             logging.error(
@@ -193,7 +219,7 @@ class AdniDataset:
 
         scans, ni, dx = self.dataset[0]
         if self.cfg.task == dc.DatasetTask.CLASSIFICATION:
-            num_out = 3 if self.cfg.cohorts is None else len(self.cfg.cohorts)
+            num_out = 3 if len(self.cfg.cohorts) == 0 else len(self.cfg.cohorts)
         elif self.cfg.task == dc.DatasetTask.PREDICTION:
             num_out = 2
 

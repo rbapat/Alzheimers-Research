@@ -3,7 +3,7 @@ import torch
 
 
 class MultiModalNet(nn.Module):
-    def __init__(self, mri_shape, ni_shape):
+    def __init__(self, mri_shape, ni_shape, **kwargs):
         super().__init__()
 
         self.model = nn.Sequential(
@@ -37,7 +37,7 @@ class MultiModalNet(nn.Module):
 
 
 class ImageOnly(nn.Module):
-    def __init__(self, mri_shape, ni_shape):
+    def __init__(self, mri_shape, **kwargs):
         super().__init__()
 
         self.model = nn.Sequential(
@@ -70,7 +70,7 @@ class ImageOnly(nn.Module):
 
 
 class CVOnly(nn.Module):
-    def __init__(self, mri_shape, ni_shape):
+    def __init__(self, ni_shape, **kwargs):
         super().__init__()
 
         self.model = nn.Sequential(

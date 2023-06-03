@@ -4,7 +4,7 @@ ADNI/
 # ADNI specific information
 
 # Model weights
-*.t7
+*.pt
 
 # class activation map data
 cam/

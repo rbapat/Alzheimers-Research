@@ -8,9 +8,10 @@ import torch
 @dataclass
 class TrainConfig:
     model_cls: type
-    model_weights: Optional[str] = None
 
     optim: partial
     loss_function: torch.nn.Module
 
     num_epochs: int
+
+    model_weights: Optional[str] = None
