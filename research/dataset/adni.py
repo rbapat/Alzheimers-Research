@@ -1,16 +1,17 @@
-import logging
+from collections import defaultdict
 from typing import Tuple, List
+import logging
 import random
 import os
 
 import torch
 import numpy as np
-import nibabel as nib
 from torch.utils.data import DataLoader, Dataset, SubsetRandomSampler
 from sklearn.model_selection import StratifiedKFold, train_test_split
 
 import research.common.dataset_config as dc
 import research.dataset.adni_helper as helper
+import research.dataset.util as util
 
 
 class _Dataset(Dataset):
@@ -48,6 +49,7 @@ class _Dataset(Dataset):
                 else:
                     self.getter = self.get_scan_prediction
             elif cfg.mode == dc.DataMode.PATHS:
+                self.paths = [util.join_paths(tp_paths) for tp_paths in self.paths]
                 self.getter = self.default_getter  # get_path_prediction
 
         if self.getter is None:
@@ -86,18 +88,15 @@ class _Dataset(Dataset):
         return path, ni, dx
 
     def get_scan_classification(self, path, ni, dx):
-        mat = nib.load(path).get_fdata()
-        mat = (mat - mat.min()) / (mat.max() - mat.min())  # min-max normalization
-        return torch.tensor(mat, device=self.device, dtype=torch.float), ni, dx
+        return util.load_scan(path, self.device), ni, dx
 
     def get_scan_prediction(self, paths, ni, dx):
-        mats = []
-        for path in paths:
-            mat = nib.load(path).get_fdata()
-            mat = (mat - mat.min()) / (mat.max() - mat.min())  # min-max normalization
-            mats.append(torch.tensor(mat, device=self.device, dtype=torch.float))
-
-        return torch.cat(mats), ni, dx
+        paths = util.split_paths(paths)
+        return (
+            torch.stack([util.load_scan(path, self.device) for path in paths]),
+            ni,
+            dx,
+        )
 
     def __len__(self):
         return self.num_samples
@@ -113,8 +112,7 @@ class AdniDataset:
         data_paths = helper.create_dataset(dataset_cfg)
         self.dataset = _Dataset(dataset_cfg, data_paths)
 
-        self.idxs = torch.arange(len(self.dataset))
-        random.shuffle(self.idxs)
+        self.idxs = torch.randperm(len(self.dataset))
         self.labels = self.dataset.dxs[self.idxs].cpu().numpy()
 
         split_type = self.cfg.split_type
@@ -132,6 +130,7 @@ class AdniDataset:
                     logging.info(
                         f"Inner fold train set has {len(train)} samples, val set has {len(val)} samples"
                     )
+
                     train_loader = self.create_dataloader(full_train[train], proxy=True)
                     val_loader = self.create_dataloader(full_train[val], proxy=True)
                     training_folds.append((train_loader, val_loader))
@@ -189,7 +188,9 @@ class AdniDataset:
             val_loader = self.create_dataloader(val_idxs)
             test_loader = self.create_dataloader(test_idxs)
             self.folds.append((train_loader, val_loader, test_loader))
-
+        elif isinstance(split_type, dc.NoSplit):
+            logging.info(f"No Split: {len(self.idxs)} samples")
+            self.folds = self.create_dataloader(self.idxs)
         else:
             logging.error(f"Unknown split type: {split_type}")
             exit(1)
@@ -198,6 +199,11 @@ class AdniDataset:
         if proxy:
             subset_idxs = self.idxs[subset_idxs]
 
+        freq = defaultdict(int)
+        for val in self.dataset.dxs[subset_idxs]:
+            freq[val.item()] += 1
+
+        logging.info(f"\t[{len(subset_idxs)}] {str(freq)}")
         return DataLoader(
             self.dataset,
             batch_size=self.cfg.batch_size,
@@ -205,25 +211,39 @@ class AdniDataset:
             sampler=SubsetRandomSampler(subset_idxs),
         )
 
+    def get_num_samples(self) -> int:
+        return len(self.dataset)
+
+    def get_batch_size(self) -> int:
+        return self.cfg.batch_size
+
     def get_split_type(self) -> dc.SplitTypes:
         return self.cfg.split_type
 
     def get_data_shape(self) -> Tuple[Tuple[int], ...]:
-        if self.cfg.mode == dc.DataMode.PATHS or (
-            self.cfg.task == dc.DatasetTask.PREDICTION and not self.cfg.load_embeddings
+        scan, ni, dx = self.dataset[0]
+        if (
+            self.cfg.task == dc.DatasetTask.PREDICTION
+            and self.cfg.mode == dc.DataMode.PATHS
         ):
-            logging.error(
-                "You must be in SCANS mode and load embeddings in order to get the data shape"
-            )
-            exit(1)
+            if self.cfg.load_embeddings:
+                scan = util.split_paths(scan)
+                scan = np.array([np.load(path).squeeze() for path in scan])
+                scan = torch.tensor(scan, device=self.dataset.device, dtype=torch.float)
+            else:
+                scan, ni, dx = self.dataset.get_scan_prediction(scan, ni, dx)
+        elif (
+            self.cfg.task == dc.DatasetTask.CLASSIFICATION
+            and self.cfg.mode == dc.DataMode.PATHS
+        ):
+            scan, ni, dx = self.dataset.get_scan_classification(scan, ni, dx)
 
-        scans, ni, dx = self.dataset[0]
         if self.cfg.task == dc.DatasetTask.CLASSIFICATION:
             num_out = 3 if len(self.cfg.cohorts) == 0 else len(self.cfg.cohorts)
         elif self.cfg.task == dc.DatasetTask.PREDICTION:
             num_out = 2
 
-        return scans.shape, ni.shape, (num_out,)
+        return scan.shape, ni.shape, (num_out,)
 
     def get_data(self):
         """Returns the training, validation, and testing data for this dataset configuration (for one epoch)

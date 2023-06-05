@@ -40,14 +40,21 @@ class Logger:
             if not os.path.exists(save_folder):
                 os.makedirs(save_folder, exist_ok=True)
 
-    def epoch(self, epoch_num, total_epochs, train_entry, val_entry, state_dict):
+    def save_weights(self, model: torch.nn.Module, path: str):
+        torch.save(model.state_dict(), path)
+
+    def load_weights(self, model: torch.nn.Module, path: str):
+        ckpt = torch.load(path)
+        model.load_state_dict(ckpt)
+
+    def epoch(self, epoch_num, total_epochs, train_entry, val_entry, model):
         if self.log_epochs:
             logging.info(
                 f"Epoch [{epoch_num}/{total_epochs}] Train Accuracy: {train_entry[1]*100:.2f}%, Val Accuracy: {val_entry[1]*100:.2f}%, Train Loss: {train_entry[0]:.4f}, Val Loss: {val_entry[0]:.4f}"
             )
 
-        if state_dict is not None:
-            torch.save(state_dict, self.ckpt_filename.format(epoch_num))
+        if model is not None:
+            self.save(model, self.ckpt_filename.format(epoch_num))
 
     def save_results(self, results: torch.Tensor, save_name: str):
         torch.save(results, self.result_filename.format(save_name))

@@ -15,3 +15,11 @@ class TrainConfig:
     num_epochs: int
 
     model_weights: Optional[str] = None
+
+
+@dataclass
+class EmbeddingConfig:
+    scan_path: str
+    embedding_path: str
+    weight_path: str
+    model_cls: type

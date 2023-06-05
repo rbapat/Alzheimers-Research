@@ -88,7 +88,12 @@ class BasicSplit:
         return self.train_ratio + self.val_ratio + self.test_ratio
 
 
-SplitTypes = Union[NestedCV, FlatCV, BasicSplit]
+@dataclass
+class NoSplit:
+    pass
+
+
+SplitTypes = Union[NestedCV, FlatCV, BasicSplit, NoSplit]
 
 
 # @dataclass_validate

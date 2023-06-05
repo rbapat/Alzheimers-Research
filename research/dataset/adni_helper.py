@@ -136,7 +136,7 @@ def create_dataset(cfg: dc.DatasetConfig) -> List:
             rows = pt_df[pt_df["IMAGEUID"].isin(ids)].sort_values(by=["Month"])
             assert len(rows) == seqlen
 
-            selected_ids.append((rows["IMAGEUID"].values, cohort))
+            selected_ids.append((cohort, rows["IMAGEUID"].values))
 
             if len(cfg.ni_vars) > 0:
                 for v in rows[cfg.ni_vars].values:

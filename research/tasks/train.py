@@ -96,13 +96,12 @@ class TrainTask(AbstractTask):
                 entry[2] = metrics.recall_score(corrects, preds, pos_label=1)
                 entry[3] = metrics.recall_score(corrects, preds, pos_label=0)
 
-            state_dict = model.state_dict() if save_weights else None
             self.logger.epoch(
                 epoch + 1,
                 total_epochs,
                 results[0, epoch, :],
                 results[1, epoch, :],
-                state_dict,
+                model if save_weights else None,
             )
         return results
 
