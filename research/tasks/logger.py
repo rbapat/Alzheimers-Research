@@ -54,7 +54,7 @@ class Logger:
             )
 
         if model is not None:
-            self.save(model, self.ckpt_filename.format(epoch_num))
+            self.save_weights(model, self.ckpt_filename.format(epoch_num))
 
     def save_results(self, results: torch.Tensor, save_name: str):
         torch.save(results, self.result_filename.format(save_name))

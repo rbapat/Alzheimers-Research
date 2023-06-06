@@ -28,7 +28,7 @@ def get_volume_paths(dataset_path: str) -> Dict[int, str]:
 
 
 def get_df(cfg: dc.DatasetConfig) -> Tuple[Dict[int, str], pd.DataFrame]:
-    required = ["PTID", "IMAGEUID", "DX", "DX_bl", "Month"]
+    required = ["PTID", "IMAGEUID", "DX", "Month"]
     subs = list(set(required) | set(cfg.ni_vars))
 
     # get ADNIMERGE dataframe, remove any irrelevant data, remove any data we dont have downloaded
@@ -88,7 +88,10 @@ def create_class_dict(
             for dxs, months, ids in seqs:
                 # get df for months `months[0] + cfg.progression_window +/- cfg.tolerance`
                 mdf = pt_df["Month"] - (months[0] + cfg.progression_window)
-                final_df = pt_df[(mdf >= -cfg.tolerance) & (mdf <= cfg.tolerance)]
+
+                final_df = pt_df[
+                    (mdf >= -cfg.tolerance_lower) & (mdf <= cfg.tolerance_upper)
+                ]
 
                 if len(final_df) == 0:
                     continue
@@ -115,6 +118,7 @@ def create_dataset(cfg: dc.DatasetConfig) -> List:
     seqlen = cfg.num_seq_visits
 
     data_ids = defaultdict(lambda: ([], []))
+    counts = defaultdict(int)
     for ptid in cohort_dict:
         cohort, ids = cohort_dict[ptid]
         pt_df = df[df["PTID"] == ptid]
@@ -126,9 +130,14 @@ def create_dataset(cfg: dc.DatasetConfig) -> List:
             for cand in candidates:
                 if len(cand) > 0:
                     dx, imid = cand[["DX", "IMAGEUID"]].values[0]
+
+                    if counts[dx] >= 500:
+                        continue
+
                     selected_ids.append((dc.PatientCohort.dx_to_cohort(dx), int(imid)))
                     if len(cfg.ni_vars) > 0:
                         selected_data.append(cand[cfg.ni_vars].values[0])
+                    counts[dx] += 1
 
                     break
 
@@ -171,5 +180,20 @@ def create_dataset(cfg: dc.DatasetConfig) -> List:
                     (volume_paths, ni_data[seqlen * idx : seqlen * idx + seqlen], dx)
                 )
 
-    logging.info(f"Found {len(dataset)} patients in this dataset")
-    return dataset
+    freqs = defaultdict(int)
+    for _, _, dx in dataset:
+        freqs[dx.get_ordinal(cohorts=cfg.cohorts)] += 1
+
+    limit = min(freqs[key] for key in freqs)
+    freqs = defaultdict(int)
+    limited_dataset = []
+    for paths, ni, dx in dataset:
+        ordinal = dx.get_ordinal(cohorts=cfg.cohorts)
+        if freqs[ordinal] >= limit:
+            continue
+
+        limited_dataset.append((paths, ni, dx))
+        freqs[ordinal] += 1
+
+    logging.info(f"Found {len(limited_dataset)} patients in this dataset")
+    return limited_dataset

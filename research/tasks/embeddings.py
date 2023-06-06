@@ -58,7 +58,9 @@ class EmbeddingTask(AbstractTask):
         self.logger.load_weights(model, self.embedding_cfg.weight_path)
 
         loader = self.dataset.get_data()
-        logging.info(f"Creating embeddings for {len(loader)} files...")
+        logging.info(
+            f"Creating embeddings for {self.dataset.get_num_samples()} files..."
+        )
 
         num_samples = self.dataset.get_num_samples()
         batch_size = self.dataset.get_batch_size()

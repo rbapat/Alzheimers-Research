@@ -90,6 +90,9 @@ class TrainTask(AbstractTask):
                         loss.backward()
                         optimizer.step()
 
+                # if phase == 1:
+                #     logging.info(preds)
+                #     logging.info(corrects)
                 entry = results[phase, epoch]
                 entry[0] = total_loss / num_in_epoch
                 entry[1] = metrics.balanced_accuracy_score(corrects, preds)
@@ -107,6 +110,31 @@ class TrainTask(AbstractTask):
 
     def nested_cv(self, split_type: dc.NestedCV):
         logging.info("Doing nested CV...")
+        # scans = torch.cat([self.dataset.dataset.paths, self.dataset.dataset.ni], dim=-1)
+        # print(scans.shape)
+        # scans = scans.cpu()[:, 2]  # [254, 3, 288]
+        # scans = scans.reshape(254, -1).numpy()
+
+        # from sklearn.decomposition import PCA
+        # import matplotlib.pyplot as plt
+
+        # pca = PCA(n_components=2)
+        # scans_pca = pca.fit(scans).transform(scans)
+        # print(scans_pca.shape)
+
+        # dxs = self.dataset.dataset.dxs.cpu().numpy()
+        # for color, i, target_name in zip(["g", "r"], [0, 1], ["sMCI", "pMCI"]):
+        #     plt.scatter(
+        #         scans_pca[dxs == i, 0],
+        #         scans_pca[dxs == i, 1],
+        #         color=color,
+        #         alpha=0.8,
+        #         lw=2,
+        #         label=target_name,
+        #     )
+
+        # plt.show()
+        # exit(1)
         train_results = torch.zeros(
             split_type.num_outer_fold,
             split_type.num_inner_fold,
@@ -118,14 +146,21 @@ class TrainTask(AbstractTask):
         test_results = torch.zeros(
             split_type.num_outer_fold, 2, self.train_cfg.num_epochs, 4
         )
-
+        targets = [-1, -1]
         for outer_idx, (inner_fold, full_train_loader, test_loader) in enumerate(
             self.dataset.get_data()
         ):
+            logging.info(f"Outer fold {outer_idx+1}/{split_type.num_outer_fold}")
             for inner_idx, (train_loader, val_loader) in enumerate(inner_fold):
+                if inner_idx != targets[1]:
+                    continue
+                logging.info(f"Inner fold {inner_idx+1}/{split_type.num_inner_fold}")
                 train_results[outer_idx, inner_idx, :] = self.evaluate_model(
                     train_loader, val_loader, False
                 )
+
+            if outer_idx != targets[0]:
+                continue
 
             test_results[outer_idx, :] = self.evaluate_model(
                 full_train_loader, test_loader, True

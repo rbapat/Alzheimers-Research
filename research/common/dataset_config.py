@@ -111,7 +111,8 @@ class DatasetConfig:
     num_seq_visits: int
     seq_visit_delta: int
     progression_window: int
-    tolerance: int
+    tolerance_lower: int
+    tolerance_upper: int
 
     embedding_paths: Optional[str] = None
     cohorts: Optional[List[str]] = field(default_factory=list)

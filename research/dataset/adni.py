@@ -20,6 +20,7 @@ class _Dataset(Dataset):
         self.ni = []
         self.dxs = []
         self.num_samples = 0
+        self.cpu = torch.device("cpu")
         self.device = torch.device(device)
         self.getter = None
 
@@ -27,7 +28,8 @@ class _Dataset(Dataset):
 
         if cfg.task == dc.DatasetTask.CLASSIFICATION:
             if cfg.mode == dc.DataMode.SCANS:
-                self.getter = self.get_scan_classification
+                self.paths = [util.load_scan(path, self.cpu) for path in self.paths]
+                self.getter = self.get_scan_classification_memory
             elif cfg.mode == dc.DataMode.PATHS:
                 self.getter = self.default_getter  # get_path_classification
         elif cfg.task == dc.DatasetTask.PREDICTION:
@@ -67,14 +69,18 @@ class _Dataset(Dataset):
 
                 embeddings[-1].append(np.load(path).squeeze())
 
-        logging.info("Done")
-        return torch.tensor(np.array(embeddings), device=self.device)
+        embs = torch.tensor(np.array(embeddings), device=self.device)
+        logging.info(f"Done ({embs.shape})")
+
+        return embs
 
     def load_data(self, cfg: dc.DatasetConfig, data_paths: List):
         for ids, data, cohort in data_paths:
+            ordinal = cohort.get_ordinal(cfg.cohorts)
+
             self.paths.append(ids)
             self.ni.append(data)
-            self.dxs.append(cohort.get_ordinal(cfg.cohorts))
+            self.dxs.append(ordinal)
             self.num_samples += 1
 
         if len(self.ni) > 0:
@@ -87,8 +93,11 @@ class _Dataset(Dataset):
     def default_getter(self, path, ni, dx):
         return path, ni, dx
 
-    def get_scan_classification(self, path, ni, dx):
+    def get_scan_classification_disk(self, path, ni, dx):
         return util.load_scan(path, self.device), ni, dx
+
+    def get_scan_classification_memory(self, path, ni, dx):
+        return path.to(self.device), ni, dx
 
     def get_scan_prediction(self, paths, ni, dx):
         paths = util.split_paths(paths)
@@ -124,9 +133,13 @@ class AdniDataset:
             outer_skf = StratifiedKFold(split_type.num_outer_fold)
             inner_skf = StratifiedKFold(split_type.num_inner_fold)
 
-            for full_train, test in outer_skf.split(self.idxs, self.labels):
+            for outer_idx, (full_train, test) in enumerate(
+                outer_skf.split(self.idxs, self.labels)
+            ):
                 training_folds = []
-                for train, val in inner_skf.split(full_train, self.labels[full_train]):
+                for inner_idx, (train, val) in enumerate(
+                    inner_skf.split(full_train, self.labels[full_train])
+                ):
                     logging.info(
                         f"Inner fold train set has {len(train)} samples, val set has {len(val)} samples"
                     )
@@ -138,8 +151,10 @@ class AdniDataset:
                 logging.info(
                     f"Full train set has {len(full_train)} samples, test set has {len(test)} samples"
                 )
+
                 full_train_loader = self.create_dataloader(full_train, proxy=True)
-                test_loader = self.create_dataloader(test)
+                test_loader = self.create_dataloader(test, proxy=True)
+
                 self.folds.append((training_folds, full_train_loader, test_loader))
 
         elif isinstance(split_type, dc.FlatCV):
@@ -236,7 +251,7 @@ class AdniDataset:
             self.cfg.task == dc.DatasetTask.CLASSIFICATION
             and self.cfg.mode == dc.DataMode.PATHS
         ):
-            scan, ni, dx = self.dataset.get_scan_classification(scan, ni, dx)
+            scan, ni, dx = self.dataset.get_scan_classification_disk(scan, ni, dx)
 
         if self.cfg.task == dc.DatasetTask.CLASSIFICATION:
             num_out = 3 if len(self.cfg.cohorts) == 0 else len(self.cfg.cohorts)

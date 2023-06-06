@@ -113,38 +113,6 @@ class DenseNet(nn.Module):
         self.end_pool = nn.AdaptiveAvgPool3d((1, 1, 1))
         self.fc = nn.Linear(growth_rate, out_shape[0])
 
-    # Reads previously saved model weights. This is more complicated than it needs to be but has more verbose errors just in case
-    def load_weights(self, weight_file, requires_grad=None):
-        with torch.no_grad():
-            if not os.path.exists(weight_file):
-                print("Weight file %s not found" % weight_file)
-                return
-
-            ckpt = torch.load(weight_file)
-            for name, param in ckpt["state_dict"].items():
-                if name not in self.state_dict():
-                    print(
-                        f"Failed to load weight {name} from checkpoint, it doesn't exist in given model"
-                    )
-
-                if self.state_dict()[name].shape != param.shape:
-                    print(
-                        "Failed",
-                        name,
-                        self.state_dict()[name].shape,
-                        "was not",
-                        param.shape,
-                    )
-                    continue
-
-                self.state_dict()[name].copy_(param)
-                # print(f"Copied {name}")
-
-                if requires_grad is not None:
-                    self.state_dict()[name].requires_grad = requires_grad
-
-            print("Pretrained Weights Loaded!")
-
     def features(self, x):
         x = x.view(-1, 1, *self.dims)
         x = self.stem(x)
