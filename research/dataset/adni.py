@@ -13,6 +13,8 @@ import research.common.dataset_config as dc
 import research.dataset.adni_helper as helper
 import research.dataset.util as util
 
+IN_MEMORY = True
+
 
 class _Dataset(Dataset):
     def __init__(self, cfg: dc.DatasetConfig, data_paths: List, device="cuda"):
@@ -28,8 +30,11 @@ class _Dataset(Dataset):
 
         if cfg.task == dc.DatasetTask.CLASSIFICATION:
             if cfg.mode == dc.DataMode.SCANS:
-                self.paths = [util.load_scan(path, self.cpu) for path in self.paths]
-                self.getter = self.get_scan_classification_memory
+                if IN_MEMORY:
+                    self.paths = [util.load_scan(path, self.cpu) for path in self.paths]
+                    self.getter = self.get_scan_classification_memory
+                else:
+                    self.getter = self.get_scan_classification_disk
             elif cfg.mode == dc.DataMode.PATHS:
                 self.getter = self.default_getter  # get_path_classification
         elif cfg.task == dc.DatasetTask.PREDICTION:

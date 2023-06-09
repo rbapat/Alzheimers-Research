@@ -17,5 +17,5 @@ train_cfg:
     momentum: 0.9
   loss_function:
     _target_: torch.nn.CrossEntropyLoss
-  num_epochs: 100
+  num_epochs: 200
 

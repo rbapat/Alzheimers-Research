@@ -110,31 +110,6 @@ class TrainTask(AbstractTask):
 
     def nested_cv(self, split_type: dc.NestedCV):
         logging.info("Doing nested CV...")
-        # scans = torch.cat([self.dataset.dataset.paths, self.dataset.dataset.ni], dim=-1)
-        # print(scans.shape)
-        # scans = scans.cpu()[:, 2]  # [254, 3, 288]
-        # scans = scans.reshape(254, -1).numpy()
-
-        # from sklearn.decomposition import PCA
-        # import matplotlib.pyplot as plt
-
-        # pca = PCA(n_components=2)
-        # scans_pca = pca.fit(scans).transform(scans)
-        # print(scans_pca.shape)
-
-        # dxs = self.dataset.dataset.dxs.cpu().numpy()
-        # for color, i, target_name in zip(["g", "r"], [0, 1], ["sMCI", "pMCI"]):
-        #     plt.scatter(
-        #         scans_pca[dxs == i, 0],
-        #         scans_pca[dxs == i, 1],
-        #         color=color,
-        #         alpha=0.8,
-        #         lw=2,
-        #         label=target_name,
-        #     )
-
-        # plt.show()
-        # exit(1)
         train_results = torch.zeros(
             split_type.num_outer_fold,
             split_type.num_inner_fold,
@@ -189,6 +164,27 @@ class TrainTask(AbstractTask):
 
     def basic_split(self, split_type: dc.BasicSplit):
         logging.info("Doing a basic split...")
+
+        # from sklearn.decomposition import PCA
+        # import matplotlib.pyplot as plt
+
+        # ni = self.dataset.dataset.ni.cpu().numpy()  # [num_samples, num_ni_vars]
+        # pca = PCA(n_components=2)
+        # ni_pca = pca.fit(ni).transform(ni)
+
+        # dxs = self.dataset.dataset.dxs.cpu().numpy()
+        # for color, i, target_name in zip(["g", "r"], [0, 1], ["sMCI", "pMCI"]):
+        #     plt.scatter(
+        #         ni_pca[dxs == i, 0],
+        #         ni_pca[dxs == i, 1],
+        #         color=color,
+        #         alpha=0.8,
+        #         lw=2,
+        #         label=target_name,
+        #     )
+
+        # plt.show()
+        # exit(1)
         train_loader, val_loader, test_loader = self.dataset.get_data()[0]
         results = self.evaluate_model(
             train_loader, val_loader, True, additional=(test_loader,)

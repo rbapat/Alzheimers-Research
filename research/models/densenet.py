@@ -98,7 +98,7 @@ class DenseNet(nn.Module):
 
         self.stem = nn.Sequential(
             Conv3d(1, 2 * growth_rate, kernel_size=7, stride=2, padding=3),
-            nn.MaxPool3d(kernel_size=2, stride=4, padding=0),
+            nn.MaxPool3d(kernel_size=2, stride=2, padding=0),
         )
 
         layers = [DenseBlock(2 * growth_rate, channels[0], growth_rate, drop_rate)]  # 0

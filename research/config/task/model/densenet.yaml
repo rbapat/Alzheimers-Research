@@ -3,6 +3,6 @@ channels:
   - 12
   - 32
   - 24
-growth_rate: 24
+growth_rate: 12
 theta: 0.5
 drop_rate: 0.1
