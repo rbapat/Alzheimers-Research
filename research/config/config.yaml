@@ -3,4 +3,4 @@ kwargs:
 defaults:
  - _self_
  - logging: basic_logging
- - task: train_classification
+ - task: train_prediction

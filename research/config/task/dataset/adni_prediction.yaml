@@ -12,9 +12,9 @@ dataset_cfg:
     num_inner_fold: 3
     num_outer_fold: 5
   scan_paths: "/media/rohan/ThirdHardDrive/Research/Combined_FSL/scans"
-  embedding_paths: "/home/rohan/Documents/main_embeddings_254"
+  embedding_paths: "/home/rohan/Documents/main_embeddings"
 
-  batch_size: 8
+  batch_size: 32
   # cohorts: 
   ni_vars:
     - "MMSE"

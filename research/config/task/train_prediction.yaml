@@ -8,7 +8,7 @@ train_cfg:
   _target_: research.common.config_classes.TrainConfig
   model_cls:
     _target_: hydra.utils.get_class
-    path: research.models.miniconv.ImageOnly
+    path: research.models.miniconv.MultiModalNet
   optim:
     _target_: functools.partial
     _args_: ['${get_method: torch.optim.SGD}']
@@ -16,6 +16,6 @@ train_cfg:
     momentum: 0.9
   loss_function:
     _target_: torch.nn.CrossEntropyLoss
-  num_epochs: 2500
+  num_epochs: 100
 
 model:

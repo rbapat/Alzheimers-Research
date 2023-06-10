@@ -121,7 +121,7 @@ class TrainTask(AbstractTask):
         test_results = torch.zeros(
             split_type.num_outer_fold, 2, self.train_cfg.num_epochs, 4
         )
-        targets = [-1, -1]
+        targets = [1, -1]
         for outer_idx, (inner_fold, full_train_loader, test_loader) in enumerate(
             self.dataset.get_data()
         ):
@@ -137,6 +137,7 @@ class TrainTask(AbstractTask):
             if outer_idx != targets[0]:
                 continue
 
+            logging.info(f"Evaluating outer fold {outer_idx+1}")
             test_results[outer_idx, :] = self.evaluate_model(
                 full_train_loader, test_loader, True
             )

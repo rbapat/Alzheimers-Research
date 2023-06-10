@@ -1,5 +1,10 @@
 _target_: research.tasks.embeddings.EmbeddingTask
 
+defaults:
+  - _self_
+  - model: densenet
+
+
 dataset:
   _target_: research.dataset.adni.AdniDataset
   dataset_cfg:
@@ -39,23 +44,12 @@ dataset:
     tolerance_lower: 24
     tolerance_upper: 0
 
-
 embedding_cfg:
   _target_: research.common.config_classes.EmbeddingConfig
   scan_path: "/media/rohan/ThirdHardDrive/Research/Combined_FSL/scans"
-  embedding_path: "/home/rohan/Documents/main_embeddings_254"
-  weight_path: "/home/rohan/projects/Alzheimers-Research/saved_results/2class_85/77.pt"
+  embedding_path: "/home/rohan/Documents/main_embeddings"
+  weight_path: "/home/rohan/projects/Alzheimers-Research/saved_results/best_2class/checkpoints/163.pt"
 
   model_cls:
     _target_: hydra.utils.get_class
     path: research.models.densenet.DenseNet
-
-model:
-  channels:
-    - 6
-    - 12
-    - 32
-    - 24
-  growth_rate: 24
-  theta: 0.5
-  drop_rate: 0.1

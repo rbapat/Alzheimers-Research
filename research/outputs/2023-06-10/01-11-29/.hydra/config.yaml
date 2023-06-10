@@ -1,0 +1,61 @@
+kwargs:
+  seed: 1
+logging:
+  _target_: research.tasks.logger.Logger
+  ckpt_folder: /home/rohan/projects/Alzheimers-Research/research/checkpoints
+  result_folder: /home/rohan/projects/Alzheimers-Research/research/results
+  log_epochs: true
+task:
+  _target_: research.tasks.train.TrainTask
+  train_cfg:
+    _target_: research.common.config_classes.TrainConfig
+    model_cls:
+      _target_: hydra.utils.get_class
+      path: research.models.miniconv.ImageOnly
+    optim:
+      _target_: functools.partial
+      _args_:
+      - '${get_method: torch.optim.SGD}'
+      lr: 0.0001
+      momentum: 0.9
+    loss_function:
+      _target_: torch.nn.CrossEntropyLoss
+    num_epochs: 200
+  model: null
+  dataset:
+    _target_: research.dataset.adni.AdniDataset
+    dataset_cfg:
+      _target_: research.common.dataset_config.DatasetConfig
+      task:
+        _target_: '${get_method: research.common.dataset_config.DatasetTask.__getattr__}'
+        name: PREDICTION
+      mode:
+        _target_: '${get_method: research.common.dataset_config.DataMode.__getattr__}'
+        name: SCANS
+      split_type:
+        _target_: research.common.dataset_config.NestedCV
+        num_inner_fold: 3
+        num_outer_fold: 5
+      scan_paths: /media/rohan/ThirdHardDrive/Research/Combined_FSL/scans
+      embedding_paths: /home/rohan/Documents/main_embeddings
+      batch_size: 32
+      ni_vars:
+      - MMSE
+      - CDRSB
+      - mPACCtrailsB
+      - mPACCdigit
+      - APOE4
+      - ADAS11
+      - ADAS13
+      - ADASQ4
+      - FAQ
+      - RAVLT_forgetting
+      - RAVLT_immediate
+      - RAVLT_learning
+      - TRABSCOR
+      load_embeddings: true
+      num_seq_visits: 3
+      seq_visit_delta: 6
+      progression_window: 48
+      tolerance_lower: 24
+      tolerance_upper: 0

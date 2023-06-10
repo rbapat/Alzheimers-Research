@@ -171,8 +171,8 @@ class AdniDataset:
 
             training_folds = []
             for train, val in skf.split(train_idxs, train_lab):
-                train_loader = self.create_dataloader(train_idxs[train])
-                val_loader = self.create_dataloader(train_idxs[val])
+                train_loader = self.create_dataloader(train_idxs[train], proxy=True)
+                val_loader = self.create_dataloader(train_idxs[val], proxy=True)
                 training_folds.append((train_loader, val_loader))
 
                 logging.info(

@@ -41,7 +41,7 @@ class Logger:
                 os.makedirs(save_folder, exist_ok=True)
 
     def save_weights(self, model: torch.nn.Module, path: str):
-        torch.save(model.state_dict(), path)
+        pass  # torch.save(model.state_dict(), path)
 
     def load_weights(self, model: torch.nn.Module, path: str):
         ckpt = torch.load(path)
