@@ -37,6 +37,6 @@ dataset_cfg:
   load_embeddings: True
   num_seq_visits: 3
   seq_visit_delta: 6
-  progression_window: 48 
+  progression_window: 36
   tolerance_lower: 24
-  tolerance_upper: 0
+  tolerance_upper: 12

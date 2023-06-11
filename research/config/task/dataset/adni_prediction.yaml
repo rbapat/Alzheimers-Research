@@ -17,23 +17,65 @@ dataset_cfg:
   batch_size: 32
   # cohorts: 
   ni_vars:
-    - "MMSE"
-    - "CDRSB"
-    - "mPACCtrailsB"
-    - "mPACCdigit"
-    - "APOE4"
-    - "ADAS11"
-    - "ADAS13"
-    - "ADASQ4"
-    - "FAQ"
-    - "RAVLT_forgetting"
-    - "RAVLT_immediate"
-    - "RAVLT_learning"
-    - "TRABSCOR"
+    -
+      name: "MMSE"
+      type: continuous_bounded
+      min: 0
+      max: 30
+    - 
+      name: "CDRSB"
+      type: continuous_bounded
+      min: 0
+      max: 30
+    - 
+      name: "mPACCtrailsB"
+      type: normal
+    -
+      name: "mPACCdigit"
+      type: normal
+    - 
+      name: "APOE4"
+      type: discrete
+      num_classes: 3
+    -
+      name: "ADAS11"
+      type: continuous_bounded
+      min: 0
+      max: 70
+    -
+      name: "ADAS13"
+      type: continuous_bounded
+      min: 0
+      max: 85
+    - 
+      name: "ADASQ4"
+      type: continuous_bounded
+      min: 0
+      max: 10
+    - 
+      name: "FAQ"
+      type: continuous_bounded
+      min: 0
+      max: 30
+    - 
+      name: "RAVLT_immediate"
+      type: continuous_bounded
+      min: 0
+      max: 75
+    - 
+      name: "RAVLT_learning"
+      type: continuous_bounded
+      min: -15
+      max: 15
+    - 
+      name: "TRABSCOR"
+      type: continuous_bounded
+      min: 0
+      max: 1000
 
   load_embeddings: True
   num_seq_visits: 3
   seq_visit_delta: 6
-  progression_window: 48
+  progression_window: 36
   tolerance_lower: 24
-  tolerance_upper: 0
+  tolerance_upper: 12

@@ -21,34 +21,76 @@ dataset:
     embedding_paths: "/media/rohan/ThirdHardDrive/Research/Combined_FSL/embeddings"
 
     batch_size: 8
-    # cohorts: 
+
     ni_vars:
-      - "MMSE"
-      - "CDRSB"
-      - "mPACCtrailsB"
-      - "mPACCdigit"
-      - "APOE4"
-      - "ADAS11"
-      - "ADAS13"
-      - "ADASQ4"
-      - "FAQ"
-      - "RAVLT_forgetting"
-      - "RAVLT_immediate"
-      - "RAVLT_learning"
-      - "TRABSCOR"
+      -
+        name: "MMSE"
+        type: continuous_bounded
+        min: 0
+        max: 30
+      - 
+        name: "CDRSB"
+        type: continuous_bounded
+        min: 0
+        max: 30
+      - 
+        name: "mPACCtrailsB"
+        type: normal
+      -
+        name: "mPACCdigit"
+        type: normal
+      - 
+        name: "APOE4"
+        type: discrete
+        num_classes: 3
+      -
+        name: "ADAS11"
+        type: continuous_bounded
+        min: 0
+        max: 70
+      -
+        name: "ADAS13"
+        type: continuous_bounded
+        min: 0
+        max: 85
+      - 
+        name: "ADASQ4"
+        type: continuous_bounded
+        min: 0
+        max: 10
+      - 
+        name: "FAQ"
+        type: continuous_bounded
+        min: 0
+        max: 30
+      - 
+        name: "RAVLT_immediate"
+        type: continuous_bounded
+        min: 0
+        max: 75
+      - 
+        name: "RAVLT_learning"
+        type: continuous_bounded
+        min: -15
+        max: 15
+      - 
+        name: "TRABSCOR"
+        type: continuous_bounded
+        min: 0
+        max: 1000
 
     load_embeddings: False
     num_seq_visits: 3
     seq_visit_delta: 6
-    progression_window: 48
+    progression_window: 36
     tolerance_lower: 24
-    tolerance_upper: 0
+    tolerance_upper: 12
 
 embedding_cfg:
   _target_: research.common.config_classes.EmbeddingConfig
   scan_path: "/media/rohan/ThirdHardDrive/Research/Combined_FSL/scans"
   embedding_path: "/home/rohan/Documents/main_embeddings"
-  weight_path: "/home/rohan/projects/Alzheimers-Research/saved_results/best_2class/checkpoints/163.pt"
+  weight_path: "/home/rohan/projects/Alzheimers-Research/saved_results/best_classification_DenseNet/checkpoints/163.pt"
 
   model_cls:
     _target_: hydra.utils.get_class

@@ -29,7 +29,8 @@ def get_volume_paths(dataset_path: str) -> Dict[int, str]:
 
 def get_df(cfg: dc.DatasetConfig) -> Tuple[Dict[int, str], pd.DataFrame]:
     required = ["PTID", "IMAGEUID", "DX", "Month"]
-    subs = list(set(required) | set(cfg.ni_vars))
+    ni_names = [ni["name"] for ni in cfg.ni_vars]
+    subs = list(set(required) | set(ni_names))
 
     # get ADNIMERGE dataframe, remove any irrelevant data, remove any data we dont have downloaded
     volume_dict = get_volume_paths(cfg.scan_paths)
@@ -96,11 +97,17 @@ def create_class_dict(
                 if len(final_df) == 0:
                     continue
 
-                final_dx = final_df["DX"].values
-                dementia_after_window = "Dementia" in final_dx
+                if not any(
+                    cfg.progression_window <= fd_month
+                    for fd_month in final_df["Month"].values
+                ):
+                    continue
 
-                is_converter = dxs[-1] == "MCI" and dementia_after_window
-                is_nonconverter = dxs[-1] == "MCI" and not dementia_after_window
+                no_dementia_before = ("Dementia" not in dxs) and ("MCI" in dxs)
+                dementia_after_window = "Dementia" in final_df["DX"].values
+
+                is_converter = no_dementia_before and dementia_after_window
+                is_nonconverter = no_dementia_before and not dementia_after_window
 
                 if is_converter:
                     res = (dc.PatientCohort.pMCI, ids)
@@ -116,6 +123,7 @@ def create_class_dict(
 def create_dataset(cfg: dc.DatasetConfig) -> List:
     paths, df, cohort_dict = create_class_dict(cfg)
     seqlen = cfg.num_seq_visits
+    ni_names = [ni["name"] for ni in cfg.ni_vars]
 
     data_ids = defaultdict(lambda: ([], []))
     counts = defaultdict(int)
@@ -134,9 +142,11 @@ def create_dataset(cfg: dc.DatasetConfig) -> List:
                     if counts[dx] >= 500:
                         continue
 
-                    selected_ids.append((dc.PatientCohort.dx_to_cohort(dx), int(imid)))
-                    if len(cfg.ni_vars) > 0:
-                        selected_data.append(cand[cfg.ni_vars].values[0])
+                    selected_ids.append(
+                        (ptid, dc.PatientCohort.dx_to_cohort(dx), int(imid))
+                    )
+                    if len(ni_names) > 0:
+                        selected_data.append(cand[ni_names].values[0])
                     counts[dx] += 1
 
                     break
@@ -145,10 +155,10 @@ def create_dataset(cfg: dc.DatasetConfig) -> List:
             rows = pt_df[pt_df["IMAGEUID"].isin(ids)].sort_values(by=["Month"])
             assert len(rows) == seqlen
 
-            selected_ids.append((cohort, rows["IMAGEUID"].values))
+            selected_ids.append((ptid, cohort, rows["IMAGEUID"].values))
 
-            if len(cfg.ni_vars) > 0:
-                for v in rows[cfg.ni_vars].values:
+            if len(ni_names) > 0:
+                for v in rows[ni_names].values:
                     selected_data.append(v if len(v) > 0 else -1)
 
     scan_ids, ni_data = data_ids[cfg.task]
@@ -158,41 +168,42 @@ def create_dataset(cfg: dc.DatasetConfig) -> List:
         )
         exit(1)
 
-    ni_data = np.array(ni_data)
-    mean, std = np.mean(ni_data, axis=0), np.std(ni_data, axis=0)
-    ni_data = np.apply_along_axis(lambda row: (row - mean) / std, 1, ni_data)
-
     dataset = []
-    for idx, (dx, imids) in enumerate(scan_ids):
+    for idx, (ptid, dx, imids) in enumerate(scan_ids):
         if cfg.task == dc.DatasetTask.CLASSIFICATION:
             if len(cfg.cohorts) > 0 and dx.name not in cfg.cohorts:
                 continue
             elif len(ni_data) == 0:
-                dataset.append((paths[int(imids)], None, dx))
+                dataset.append((ptid, paths[int(imids)], None, dx))
             else:
-                dataset.append((paths[int(imids)], ni_data[idx], dx))
+                dataset.append((ptid, paths[int(imids)], ni_data[idx], dx))
         elif cfg.task == dc.DatasetTask.PREDICTION:
             volume_paths = [paths[int(image_id)] for image_id in imids]
             if len(ni_data) == 0:
-                dataset.append((volume_paths, None, dx))
+                dataset.append((ptid, volume_paths, None, dx))
             else:
                 dataset.append(
-                    (volume_paths, ni_data[seqlen * idx : seqlen * idx + seqlen], dx)
+                    (
+                        ptid,
+                        volume_paths,
+                        ni_data[seqlen * idx : seqlen * idx + seqlen],
+                        dx,
+                    )
                 )
 
     freqs = defaultdict(int)
-    for _, _, dx in dataset:
+    for _, _, _, dx in dataset:
         freqs[dx.get_ordinal(cohorts=cfg.cohorts)] += 1
 
     limit = min(freqs[key] for key in freqs)
     freqs = defaultdict(int)
     limited_dataset = []
-    for paths, ni, dx in dataset:
+    for ptid, paths, ni, dx in dataset:
         ordinal = dx.get_ordinal(cohorts=cfg.cohorts)
         if freqs[ordinal] >= limit:
             continue
 
-        limited_dataset.append((paths, ni, dx))
+        limited_dataset.append((ptid, paths, ni, dx))
         freqs[ordinal] += 1
 
     logging.info(f"Found {len(limited_dataset)} patients in this dataset")

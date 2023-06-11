@@ -6,6 +6,7 @@ import os
 
 import torch
 import numpy as np
+import torch.nn.functional as F
 from torch.utils.data import DataLoader, Dataset, SubsetRandomSampler
 from sklearn.model_selection import StratifiedKFold, train_test_split
 
@@ -21,6 +22,7 @@ class _Dataset(Dataset):
         self.paths = []
         self.ni = []
         self.dxs = []
+        self.ptids = []
         self.num_samples = 0
         self.cpu = torch.device("cpu")
         self.device = torch.device(device)
@@ -80,18 +82,75 @@ class _Dataset(Dataset):
         return embs
 
     def load_data(self, cfg: dc.DatasetConfig, data_paths: List):
-        for ids, data, cohort in data_paths:
+        ni_data = []
+        for ptid, ids, data, cohort in data_paths:
             ordinal = cohort.get_ordinal(cfg.cohorts)
 
+            self.ptids.append(ptid)
             self.paths.append(ids)
-            self.ni.append(data)
+            ni_data.append(data)
             self.dxs.append(ordinal)
             self.num_samples += 1
 
-        if len(self.ni) > 0:
-            self.ni = torch.tensor(
-                np.array(self.ni), device=self.device, dtype=torch.float
-            )
+        if ni_data[0] is not None:
+            ni_data = torch.tensor(np.array(ni_data), dtype=torch.float)
+            num_samples, num_tp, num_ni = ni_data.shape
+            ni_data = ni_data.reshape(num_samples * num_tp, num_ni)
+
+            cat_ni = []
+            for idx, ni_dict in enumerate(cfg.ni_vars):
+                data = ni_data[:, idx]
+                if ni_dict["type"] == "continuous_bounded":
+                    mins = data[data < ni_dict["min"]]
+                    maxes = data[data > ni_dict["max"]]
+                    if len(mins) > 0:
+                        logging.info(
+                            f"Found a {ni_dict['type']} value under {ni_dict['min']}: {mins}"
+                        )
+                        exit(1)
+                    elif len(maxes) > 0:
+                        logging.info(
+                            f"Found a {ni_dict['type']} value above {ni_dict['max']}: {maxes}"
+                        )
+                        exit(1)
+                    elif ni_dict["max"] == 0:
+                        logging.info(f"Max value for {ni_dict['type']} cannot be 0")
+                        exit(1)
+
+                    data = (data - ni_dict["min"]) / ni_dict["max"]
+                    data = data.unsqueeze(-1)
+
+                elif ni_dict["type"] == "normal":
+                    mean, std = torch.mean(data), torch.std(data)
+                    if std == 0:
+                        logging.info(f"Std Dev for {ni_dict['type']} cannot be 0")
+                        exit(1)
+
+                    data = (data - mean) / std
+                    data = data.unsqueeze(-1)
+                elif ni_dict["type"] == "discrete":
+                    data = data.to(torch.long)
+                    data = F.one_hot(data, num_classes=ni_dict["num_classes"])
+                else:
+                    logging.error(f"Unknown ni_dict type: {ni_dict['type']}")
+                    exit(1)
+
+                cat_ni.append(data)
+
+            ni_data = torch.cat(cat_ni, dim=-1).view(num_samples, num_tp, -1)
+            self.ni = ni_data.to(self.device)
+
+            # import matplotlib.pyplot as plt
+
+            # for idx, ni_name in enumerate(cfg.ni_vars):
+            #     plt.title(ni_name)
+            #     plt.hist(
+            #         ni[:, idx],
+            #         bins=np.arange(ni[:, idx].min(), ni[:, idx].max() + 1),
+            #         align="left",
+            #     )
+            #     plt.figure()
+            # plt.show()
 
         self.dxs = torch.tensor(self.dxs, device=self.device, dtype=torch.long)
 
@@ -224,6 +283,7 @@ class AdniDataset:
             freq[val.item()] += 1
 
         logging.info(f"\t[{len(subset_idxs)}] {str(freq)}")
+        # logging.info(f"\t\t{subset_idxs}")
         return DataLoader(
             self.dataset,
             batch_size=self.cfg.batch_size,

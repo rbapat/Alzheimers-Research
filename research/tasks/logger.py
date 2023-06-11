@@ -56,5 +56,20 @@ class Logger:
         if model is not None:
             self.save_weights(model, self.ckpt_filename.format(epoch_num))
 
+    def epoch_new(self, epoch_num, total_epochs, entries, names, model):
+        if self.log_epochs:
+            msg = f"Epoch [{epoch_num}/{total_epochs}] "
+
+            for entry, name in zip(entries, names):
+                msg += f"{name} Accuracy: {entry[1]*100:.2f}%, "
+
+            for entry, name in zip(entries, names):
+                msg += f"{name} Loss: {entry[0]:.4f}, "
+
+            logging.info(msg[:-2])
+
+        if model is not None:
+            self.save_weights(model, self.ckpt_filename.format(epoch_num))
+
     def save_results(self, results: torch.Tensor, save_name: str):
         torch.save(results, self.result_filename.format(save_name))
