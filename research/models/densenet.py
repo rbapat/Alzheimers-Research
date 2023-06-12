@@ -117,6 +117,7 @@ class DenseNet(nn.Module):
         x = x.view(-1, 1, *self.dims)
         x = self.stem(x)
         x = self.model(x)
+        x = self.end_pool(x)
         x = x.view(len(x), -1)
         return x
 
@@ -127,7 +128,8 @@ class DenseNet(nn.Module):
 
         x = self.model(x)
 
-        x = self.end_pool(x).view(len(x), -1)
+        x = self.end_pool(x)
+        x = x.view(len(x), -1)
         x = self.fc(x)
 
         return x

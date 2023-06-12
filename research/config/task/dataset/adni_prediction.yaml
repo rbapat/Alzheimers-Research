@@ -14,8 +14,7 @@ dataset_cfg:
   scan_paths: "/media/rohan/ThirdHardDrive/Research/Combined_FSL/scans"
   embedding_paths: "/home/rohan/Documents/main_embeddings"
 
-  batch_size: 32
-  # cohorts: 
+  batch_size: 192
   ni_vars:
     -
       name: "MMSE"

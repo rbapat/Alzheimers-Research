@@ -11,11 +11,11 @@ train_cfg:
     path: research.models.miniconv.MultiModalNet
   optim:
     _target_: functools.partial
-    _args_: ['${get_method: torch.optim.SGD}']
-    lr: 1e-3
-    momentum: 0.9
+    _args_: ['${get_method: torch.optim.Adam}']
+    lr: 1e-4
   loss_function:
     _target_: torch.nn.CrossEntropyLoss
-  num_epochs: 10000
+  num_epochs: 20000
+  es_tolerance: 0
 
 model:

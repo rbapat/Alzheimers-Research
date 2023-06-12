@@ -154,28 +154,31 @@ class _Dataset(Dataset):
 
         self.dxs = torch.tensor(self.dxs, device=self.device, dtype=torch.long)
 
-    def default_getter(self, path, ni, dx):
-        return path, ni, dx
+    def default_getter(self, path, ni, dx, ptid):
+        return path, ni, dx, ptid
 
-    def get_scan_classification_disk(self, path, ni, dx):
-        return util.load_scan(path, self.device), ni, dx
+    def get_scan_classification_disk(self, path, ni, dx, ptid):
+        return util.load_scan(path, self.device), ni, dx, ptid
 
-    def get_scan_classification_memory(self, path, ni, dx):
-        return path.to(self.device), ni, dx
+    def get_scan_classification_memory(self, path, ni, dx, ptid):
+        return path.to(self.device), ni, dx, ptid
 
-    def get_scan_prediction(self, paths, ni, dx):
+    def get_scan_prediction(self, paths, ni, dx, ptid):
         paths = util.split_paths(paths)
         return (
             torch.stack([util.load_scan(path, self.device) for path in paths]),
             ni,
             dx,
+            ptid,
         )
 
     def __len__(self):
         return self.num_samples
 
     def __getitem__(self, idx):
-        return self.getter(self.paths[idx], self.ni[idx], self.dxs[idx])
+        return self.getter(
+            self.paths[idx], self.ni[idx], self.dxs[idx], self.ptids[idx]
+        )
 
 
 class AdniDataset:
@@ -301,7 +304,7 @@ class AdniDataset:
         return self.cfg.split_type
 
     def get_data_shape(self) -> Tuple[Tuple[int], ...]:
-        scan, ni, dx = self.dataset[0]
+        scan, ni, dx, ptid = self.dataset[0]
         if (
             self.cfg.task == dc.DatasetTask.PREDICTION
             and self.cfg.mode == dc.DataMode.PATHS
@@ -311,12 +314,16 @@ class AdniDataset:
                 scan = np.array([np.load(path).squeeze() for path in scan])
                 scan = torch.tensor(scan, device=self.dataset.device, dtype=torch.float)
             else:
-                scan, ni, dx = self.dataset.get_scan_prediction(scan, ni, dx)
+                scan, ni, dx, ptid = self.dataset.get_scan_prediction(
+                    scan, ni, dx, ptid
+                )
         elif (
             self.cfg.task == dc.DatasetTask.CLASSIFICATION
             and self.cfg.mode == dc.DataMode.PATHS
         ):
-            scan, ni, dx = self.dataset.get_scan_classification_disk(scan, ni, dx)
+            scan, ni, dx, ptid = self.dataset.get_scan_classification_disk(
+                scan, ni, dx, ptid
+            )
 
         if self.cfg.task == dc.DatasetTask.CLASSIFICATION:
             num_out = 3 if len(self.cfg.cohorts) == 0 else len(self.cfg.cohorts)

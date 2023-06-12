@@ -1,3 +1,4 @@
+import sys
 import logging
 from typing import Tuple
 
@@ -67,16 +68,24 @@ class TrainTask(AbstractTask):
 
         total_epochs = self.train_cfg.num_epochs
         model, optimizer, criterion = self.init_model()
+        es_tolerance = self.train_cfg.es_tolerance
 
         results = torch.zeros(len(phases), self.train_cfg.num_epochs, 4)
+        best_loss, tolerance_track = sys.float_info.max, 0
         for epoch in range(total_epochs):
+            if es_tolerance != 0 and tolerance_track > es_tolerance:
+                break
+
+            losses = []
             for phase, loader in enumerate(phases):
                 preds = []
                 corrects = []
+                logs = []
+                ptids = []
                 total_loss = 0
                 num_in_epoch = 0
 
-                for mat, clin_vars, ground_truth in loader:
+                for mat, clin_vars, ground_truth, ptid in loader:
                     optimizer.zero_grad()
                     model.train(phase == 0)
 
@@ -86,22 +95,35 @@ class TrainTask(AbstractTask):
 
                     total_loss += loss.item() * len(mat)
                     num_in_epoch += len(mat)
-                    for gt, p in zip(ground_truth, predictions):
+                    for gt, p, logits, bptid in zip(
+                        ground_truth, predictions, raw_output, ptid
+                    ):
                         corrects.append(gt.item())
                         preds.append(p.item())
+                        logs.append(logits.detach().cpu().numpy())
+                        ptids.append(bptid)
 
                     if phase == 0:
                         loss.backward()
                         optimizer.step()
 
-                # if phase == 1:
-                #     logging.info(preds)
-                #     logging.info(corrects)
                 entry = results[phase, epoch]
                 entry[0] = total_loss / num_in_epoch
                 entry[1] = metrics.balanced_accuracy_score(corrects, preds)
                 entry[2] = metrics.recall_score(corrects, preds, pos_label=1)
                 entry[3] = metrics.recall_score(corrects, preds, pos_label=0)
+                losses.append(entry[0].item())
+
+                # if phase == 1:
+                #     wrongs = {}
+                #     for c, p, l, pt in zip(corrects, preds, logs, ptids):
+                #         if c != p:
+                #             msg = f"Predicted {p}, Actual {c}, Logits {[round(li.item(), 4) for li in l]} | {pt}"
+                #             wrongs[pt] = msg
+
+                #     for idx, key in enumerate(dict(sorted(wrongs.items()))):
+                #         print(f"[{idx}] {wrongs[key]}")
+                #     input()
 
             self.logger.epoch_new(
                 epoch + 1,
@@ -110,6 +132,13 @@ class TrainTask(AbstractTask):
                 names,
                 model if save_weights else None,
             )
+
+            if losses[1] < best_loss:
+                best_loss = losses[1]
+                tolerance_track = 0
+            else:
+                tolerance_track += 1
+
         return results
 
     def nested_cv(self, split_type: dc.NestedCV):
@@ -122,234 +151,38 @@ class TrainTask(AbstractTask):
             4,
         )
 
-        # import pandas as pd
-
-        # subs = ["PTID", "IMAGEUID", "DX", "Month"]
-        # df = pd.read_csv("ADNIMERGE.csv", low_memory=False).dropna(subset=subs)[subs]
-
-        # print("TEST")
-        # for num, tidx in enumerate(test_idx):
-        #     ptid, dx = self.dataset.dataset.ptids[tidx], self.dataset.dataset.dxs[tidx]
-
-        #     print(f"{num}: {'STABLE' if dx.item() == 0 else 'PROGRESSIVE'}")
-        #     print((df[df["PTID"] == ptid]).sort_values(by=["Month"]))
-        #     input()
-        # print("TRAIN")
-        # for num, tidx in enumerate(train_idx):
-        #     ptid, dx = self.dataset.dataset.ptids[tidx], self.dataset.dataset.dxs[tidx]
-
-        #     print(f"{num}: {'STABLE' if dx.item() == 0 else 'PROGRESSIVE'}")
-        #     print((df[df["PTID"] == ptid]).sort_values(by=["Month"]))
-        #     input()
-
-        # input()
-
         # from sklearn.decomposition import PCA
         # import matplotlib.pyplot as plt
         # import numpy as np
 
-        # train_idx = [
-        #     161,
-        #     51,
-        #     136,
-        #     160,
-        #     35,
-        #     101,
-        #     57,
-        #     63,
-        #     71,
-        #     129,
-        #     30,
-        #     150,
-        #     88,
-        #     105,
-        #     133,
-        #     154,
-        #     34,
-        #     98,
-        #     64,
-        #     125,
-        #     146,
-        #     122,
-        #     168,
-        #     126,
-        #     75,
-        #     58,
-        #     21,
-        #     144,
-        #     153,
-        #     143,
-        #     156,
-        #     9,
-        #     139,
-        #     48,
-        #     83,
-        #     110,
-        #     115,
-        #     12,
-        #     132,
-        #     120,
-        #     73,
-        #     74,
-        #     6,
-        #     81,
-        #     107,
-        #     8,
-        #     18,
-        #     171,
-        #     113,
-        #     140,
-        #     106,
-        #     1,
-        #     49,
-        #     72,
-        #     69,
-        #     170,
-        #     163,
-        #     20,
-        #     67,
-        #     102,
-        #     15,
-        #     91,
-        #     23,
-        #     92,
-        #     84,
-        #     123,
-        #     28,
-        #     152,
-        #     7,
-        #     157,
-        #     100,
-        #     4,
-        #     85,
-        #     70,
-        #     55,
-        #     50,
-        #     13,
-        #     135,
-        #     142,
-        #     77,
-        #     45,
-        #     39,
-        #     24,
-        #     111,
-        #     22,
-        #     127,
-        #     87,
-        #     164,
-        #     141,
-        #     26,
-        #     114,
-        #     95,
-        #     151,
-        #     124,
-        #     10,
-        #     86,
-        #     96,
-        #     38,
-        #     3,
-        #     44,
-        #     162,
-        #     134,
-        #     148,
-        #     46,
-        #     155,
-        #     89,
-        #     41,
-        #     103,
-        #     82,
-        #     59,
-        #     108,
-        #     29,
-        #     37,
-        #     16,
-        #     14,
-        #     93,
-        #     119,
-        #     53,
-        #     94,
-        #     112,
-        #     158,
-        #     68,
-        #     60,
-        #     56,
-        #     11,
-        #     104,
-        #     167,
-        #     79,
-        #     54,
-        #     159,
-        #     65,
-        #     169,
-        #     76,
-        #     138,
-        #     118,
-        #     31,
-        #     42,
-        #     145,
-        # ]
-        # test_idx = [
-        #     52,
-        #     36,
-        #     121,
-        #     33,
-        #     27,
-        #     2,
-        #     47,
-        #     137,
-        #     117,
-        #     25,
-        #     62,
-        #     0,
-        #     40,
-        #     78,
-        #     147,
-        #     109,
-        #     97,
-        #     66,
-        #     17,
-        #     131,
-        #     149,
-        #     165,
-        #     32,
-        #     99,
-        #     130,
-        #     61,
-        #     116,
-        #     5,
-        #     128,
-        #     19,
-        #     80,
-        #     43,
-        #     90,
-        #     166,
-        # ]
+        # embs = self.dataset.dataset.paths[idxs].cpu().numpy()  # (num_test, 3, emb_size)
 
-        # target = test_idx
-        # ni = (
-        #     self.dataset.dataset.ni[target].view(len(target), -1).cpu().numpy()
-        # )  # [num_samples, 3, num_ni_vars]
-        # pca = PCA(n_components=2)
-        # ni_pca = pca.fit(ni).transform(ni)
+        # for tp in range(3):
+        #     dxs = self.dataset.dataset.dxs[idxs].cpu().numpy()  # (num_test, 1)
+        #     ptids = np.array([self.dataset.dataset.ptids[i] for i in idxs])
 
-        # dxs = self.dataset.dataset.dxs[target].cpu().numpy()
-        # ptid = np.array(self.dataset.dataset.ptids)[target]
-        # for color, i, target_name in zip(["g", "r"], [0, 1], ["sMCI", "pMCI"]):
-        #     X = ni_pca[dxs == i, 0]
-        #     Y = ni_pca[dxs == i, 1]
-        #     T = ptid[dxs == i]
-        #     plt.scatter(
-        #         X,
-        #         Y,
-        #         color=color,
-        #         alpha=0.8,
-        #         lw=2,
-        #         label=target_name,
-        #     )
+        #     pca = PCA(n_components=2)
+        #     embs_pca = embs[:, tp, :]
+        #     embs_pca = pca.fit(embs_pca).transform(embs_pca)
 
-        #     for i, txt in enumerate(T):
-        #         plt.annotate(txt, (X[i], Y[i]))
-        #         print(txt)
+        #     plt.title(f"Timepoint {tp}")
+        #     for color, i, target_name in zip(["g", "r"], [0, 1], ["sMCI", "pMCI"]):
+        #         X = embs_pca[dxs == i, 0]
+        #         Y = embs_pca[dxs == i, 1]
+        #         P = ptids[dxs == i]
+
+        #         plt.scatter(
+        #             X,
+        #             Y,
+        #             color=color,
+        #             alpha=0.8,
+        #             lw=2,
+        #             label=target_name,
+        #         )
+
+        #         # for xval, yval, label in zip(X, Y, P):
+        #         #     plt.annotate(label, xy=(xval, yval))
+        #     plt.figure()
 
         # plt.show()
         # exit(1)
@@ -357,21 +190,16 @@ class TrainTask(AbstractTask):
         test_results = torch.zeros(
             split_type.num_outer_fold, 2, self.train_cfg.num_epochs, 4
         )
-        # targets = [4, -1]
+
         for outer_idx, (inner_fold, full_train_loader, test_loader) in enumerate(
             self.dataset.get_data()
         ):
             logging.info(f"Outer fold {outer_idx+1}/{split_type.num_outer_fold}")
             for inner_idx, (train_loader, val_loader) in enumerate(inner_fold):
-                # if inner_idx != targets[1]:
-                #     continue
                 logging.info(f"Inner fold {inner_idx+1}/{split_type.num_inner_fold}")
                 train_results[outer_idx, inner_idx, :] = self.evaluate_model(
                     train_loader, val_loader, False
                 )
-
-            # if outer_idx != targets[0]:
-            #     continue
 
             logging.info(f"Evaluating outer fold {outer_idx+1}")
             test_results[outer_idx, :] = self.evaluate_model(

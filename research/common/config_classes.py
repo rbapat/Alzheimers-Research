@@ -13,6 +13,7 @@ class TrainConfig:
     loss_function: torch.nn.Module
 
     num_epochs: int
+    es_tolerance: int
 
     model_weights: Optional[str] = None
 

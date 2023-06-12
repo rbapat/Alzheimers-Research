@@ -65,7 +65,7 @@ class EmbeddingTask(AbstractTask):
         num_samples = self.dataset.get_num_samples()
         batch_size = self.dataset.get_batch_size()
 
-        for batch_num, (batch, ni, dx) in enumerate(loader):
+        for batch_num, (batch, ni, dx, ptid) in enumerate(loader):
             for i, tp_paths in enumerate(batch):
                 logging.info(f"[{batch_num*batch_size+i+1}/{num_samples}]")
                 for old_path in util.split_paths(tp_paths):

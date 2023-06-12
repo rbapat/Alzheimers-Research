@@ -195,7 +195,7 @@ def create_dataset(cfg: dc.DatasetConfig) -> List:
     for _, _, _, dx in dataset:
         freqs[dx.get_ordinal(cohorts=cfg.cohorts)] += 1
 
-    limit = min(freqs[key] for key in freqs)
+    limit = min(freqs[key] for key in freqs) * 1.5
     freqs = defaultdict(int)
     limited_dataset = []
     for ptid, paths, ni, dx in dataset:
@@ -206,5 +206,5 @@ def create_dataset(cfg: dc.DatasetConfig) -> List:
         limited_dataset.append((ptid, paths, ni, dx))
         freqs[ordinal] += 1
 
-    logging.info(f"Found {len(limited_dataset)} patients in this dataset")
+    logging.info(f"Found {len(limited_dataset)} patients in this dataset ({freqs})")
     return limited_dataset
