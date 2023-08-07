@@ -89,7 +89,7 @@ dataset:
 embedding_cfg:
   _target_: research.common.config_classes.EmbeddingConfig
   scan_path: "/media/rohan/ThirdHardDrive/Research/Combined_FSL/scans"
-  embedding_path: "/home/rohan/Documents/main_embeddings"
+  embedding_path: "/media/rohan/ThirdHardDrive/Research/Combined_FSL/embeddings"
   weight_path: "/home/rohan/projects/Alzheimers-Research/saved_results/best_classification_DenseNet/checkpoints/163.pt"
 
   model_cls:

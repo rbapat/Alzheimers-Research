@@ -16,7 +16,7 @@ dataset_cfg:
     val_ratio: 0.0
     test_ratio: 0.2
   scan_paths: "/media/rohan/ThirdHardDrive/Research/Combined_FSL/scans"
-  embedding_paths: "/home/rohan/Documents/main_embeddings"
+  embedding_paths: "/media/rohan/ThirdHardDrive/Research/Combined_FSL/embeddings"
 
   batch_size: 1
   ni_vars:
