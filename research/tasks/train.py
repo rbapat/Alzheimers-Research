@@ -45,7 +45,12 @@ class TrainTask(AbstractTask):
         return model, optim, criterion
 
     def evaluate_model(
-        self, train_set, val_set, save_weights: bool, additional: Tuple = ()
+        self,
+        train_set,
+        val_set,
+        save_weights: bool,
+        additional: Tuple = (),
+        exp_name="",
     ) -> torch.Tensor:
         """Trains the model using the optimizer and loss function in the training config on the given
         training set and validation set.
@@ -131,6 +136,7 @@ class TrainTask(AbstractTask):
                 results[:, epoch, :],
                 names,
                 model if save_weights else None,
+                extra_name=exp_name,
             )
 
             if losses[1] < best_loss:
@@ -203,7 +209,7 @@ class TrainTask(AbstractTask):
 
             logging.info(f"Evaluating outer fold {outer_idx+1}")
             test_results[outer_idx, :] = self.evaluate_model(
-                full_train_loader, test_loader, True
+                full_train_loader, test_loader, True, exp_name=f"fold_{outer_idx}"
             )
 
         self.logger.save_results(train_results, "train")
@@ -251,9 +257,7 @@ class TrainTask(AbstractTask):
         # plt.show()
         # exit(1)
         train_loader, val_loader, test_loader = self.dataset.get_data()[0]
-        results = self.evaluate_model(
-            train_loader, val_loader, True, additional=(test_loader,)
-        )
+        results = self.evaluate_model(train_loader, test_loader, True)
 
         self.logger.save_results(results, "train_test")
         logging.info("Done!")

@@ -3,6 +3,7 @@ import logging
 from collections import defaultdict
 from typing import Dict, Tuple, List
 
+import torch
 import numpy as np
 import pandas as pd
 
@@ -28,7 +29,7 @@ def get_volume_paths(dataset_path: str) -> Dict[int, str]:
 
 
 def get_df(cfg: dc.DatasetConfig) -> Tuple[Dict[int, str], pd.DataFrame]:
-    required = ["PTID", "IMAGEUID", "DX", "Month"]
+    required = ["PTID", "IMAGEUID", "DX", "Month", "PTGENDER", "AGE"]
     ni_names = [ni["name"] for ni in cfg.ni_vars]
     subs = list(set(required) | set(ni_names))
 
@@ -198,6 +199,8 @@ def create_dataset(cfg: dc.DatasetConfig) -> List:
     limit = min(freqs[key] for key in freqs) * 1.5
     freqs = defaultdict(int)
     limited_dataset = []
+
+    # trackers = [[], []]
     for ptid, paths, ni, dx in dataset:
         ordinal = dx.get_ordinal(cohorts=cfg.cohorts)
         if freqs[ordinal] >= limit:
@@ -205,6 +208,22 @@ def create_dataset(cfg: dc.DatasetConfig) -> List:
 
         limited_dataset.append((ptid, paths, ni, dx))
         freqs[ordinal] += 1
+
+        # gender = df[df["PTID"] == ptid]["PTGENDER"].values[0]
+        # age = float(df[df["PTID"] == ptid]["AGE"].values[0])
+        # trackers[ordinal].append((gender, age))
+
+    # all_g = ["Male", "Female"]
+    # for idx, dxset in enumerate(trackers):
+    #     genders, ages = [a[0] for a in dxset], torch.Tensor([a[1] for a in dxset])
+    #     mean, std = torch.mean(ages), torch.std(ages)
+    #     num_male = torch.sum(torch.Tensor([1 - all_g.index(g) for g in genders]))
+    #     num_female = torch.sum(torch.Tensor([all_g.index(g) for g in genders]))
+    #     count = len(dxset)
+
+    #     print(
+    #         f"For dxset {idx} classification: {mean} +/- {std} |  {num_male}, {num_female} | ({count})"
+    #     )
 
     logging.info(f"Found {len(limited_dataset)} patients in this dataset ({freqs})")
     return limited_dataset

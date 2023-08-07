@@ -121,6 +121,9 @@ class DenseNet(nn.Module):
         x = x.view(len(x), -1)
         return x
 
+    def get_features_shape(self):
+        return (12,)
+
     def forward(self, x, clin_vars):
         x = x.view(-1, 1, *self.dims)
 

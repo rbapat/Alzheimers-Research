@@ -18,4 +18,5 @@ train_cfg:
   loss_function:
     _target_: torch.nn.CrossEntropyLoss
   num_epochs: 200
+  es_tolerance: 0
 

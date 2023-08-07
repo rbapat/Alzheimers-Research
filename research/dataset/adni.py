@@ -256,18 +256,26 @@ class AdniDataset:
                 exit(1)
 
             full_train_idxs, test_idxs, train_labels, _ = train_test_split(
-                self.idxs, self.labels, test_size=split_type.test_ratio
+                self.idxs,
+                self.labels,
+                train_size=split_type.train_ratio + split_type.val_ratio,
             )
 
-            train_idxs, val_idxs, _, _ = train_test_split(
-                full_train_idxs, train_labels, test_size=split_type.val_ratio
-            )
+            if split_type.val_ratio != 0:
+                train_idxs, val_idxs, _, _ = train_test_split(
+                    full_train_idxs, train_labels, test_size=split_type.val_ratio
+                )
+            else:
+                train_idxs = full_train_idxs
+                val_idxs = []
 
             logging.info(
                 f"Train set has {len(train_idxs)} samples, val has {len(val_idxs)} samples, test has {len(test_idxs)} samples"
             )
             train_loader = self.create_dataloader(train_idxs)
-            val_loader = self.create_dataloader(val_idxs)
+            val_loader = (
+                None if len(val_idxs) == 0 else self.create_dataloader(val_idxs)
+            )
             test_loader = self.create_dataloader(test_idxs)
             self.folds.append((train_loader, val_loader, test_loader))
         elif isinstance(split_type, dc.NoSplit):

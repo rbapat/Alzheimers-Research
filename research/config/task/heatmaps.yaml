@@ -1,0 +1,24 @@
+_target_: research.tasks.heatmaps.HeatmapsTask
+
+defaults:
+  - _self_
+  - dataset: prediction_heatmaps
+  - model@embedding_params: densenet
+  - model@prediction_params: miniconv
+
+heatmaps_cfg:
+  _target_: research.common.config_classes.HeatmapsConfig
+  embedding_model_cls:
+    _target_: hydra.utils.get_class
+    path: research.models.densenet.DenseNet
+  embedding_weights: "/home/rohan/projects/Alzheimers-Research/saved_results/best_classification_DenseNet/checkpoints/163.pt"
+  prediction_model_cls:
+    _target_: hydra.utils.get_class
+    path: research.models.miniconv.MultiModalNet
+  prediction_weights: "/home/rohan/projects/Alzheimers-Research/saved_results/MultiModal_BasicSplit/_epoch679.pt"
+
+  heatmap_min: 0.3
+  heatmap_max: 1.0
+  gaussian_sigma: 1
+
+  volume_path: "/home/rohan/projects/Alzheimers-Research/research/figures/heatmaps/volumes/2023-07-26_13-09-00.pt"
